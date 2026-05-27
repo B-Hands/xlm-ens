@@ -1,10 +1,17 @@
 {
   "generators": {
-    "address": 3,
+    "address": 2,
     "nonce": 0,
     "mux_id": 0
   },
   "auth": [
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
     [],
     [],
     [],
@@ -34,7 +41,7 @@
                     "symbol": "Auction"
                   },
                   {
-                    "string": "tie.xlm"
+                    "string": "alpha.xlm"
                   }
                 ]
               },
@@ -54,7 +61,7 @@
                                 "symbol": "amount"
                               },
                               "val": {
-                                "u64": "500"
+                                "u64": "200"
                               }
                             },
                             {
@@ -71,34 +78,6 @@
                               },
                               "val": {
                                 "u64": "12"
-                              }
-                            }
-                          ]
-                        },
-                        {
-                          "map": [
-                            {
-                              "key": {
-                                "symbol": "amount"
-                              },
-                              "val": {
-                                "u64": "500"
-                              }
-                            },
-                            {
-                              "key": {
-                                "symbol": "bidder"
-                              },
-                              "val": {
-                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                              }
-                            },
-                            {
-                              "key": {
-                                "symbol": "placed_at"
-                              },
-                              "val": {
-                                "u64": "13"
                               }
                             }
                           ]
@@ -119,7 +98,7 @@
                       "symbol": "name"
                     },
                     "val": {
-                      "string": "tie.xlm"
+                      "string": "alpha.xlm"
                     }
                   },
                   {
@@ -156,6 +135,142 @@
               "key": {
                 "vec": [
                   {
+                    "symbol": "Auction"
+                  },
+                  {
+                    "string": "beta.xlm"
+                  }
+                ]
+              },
+              "durability": "persistent",
+              "val": {
+                "map": [
+                  {
+                    "key": {
+                      "symbol": "bids"
+                    },
+                    "val": {
+                      "vec": []
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "ends_at"
+                    },
+                    "val": {
+                      "u64": "40"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "name"
+                    },
+                    "val": {
+                      "string": "beta.xlm"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "reserve_price"
+                    },
+                    "val": {
+                      "u64": "100"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "starts_at"
+                    },
+                    "val": {
+                      "u64": "30"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 4095
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "key": {
+                "vec": [
+                  {
+                    "symbol": "Auction"
+                  },
+                  {
+                    "string": "gamma.xlm"
+                  }
+                ]
+              },
+              "durability": "persistent",
+              "val": {
+                "map": [
+                  {
+                    "key": {
+                      "symbol": "bids"
+                    },
+                    "val": {
+                      "vec": []
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "ends_at"
+                    },
+                    "val": {
+                      "u64": "60"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "name"
+                    },
+                    "val": {
+                      "string": "gamma.xlm"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "reserve_price"
+                    },
+                    "val": {
+                      "u64": "100"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "starts_at"
+                    },
+                    "val": {
+                      "u64": "50"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 4095
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "key": {
+                "vec": [
+                  {
                     "symbol": "AuctionIndex"
                   }
                 ]
@@ -164,7 +279,13 @@
               "val": {
                 "vec": [
                   {
-                    "string": "tie.xlm"
+                    "string": "alpha.xlm"
+                  },
+                  {
+                    "string": "beta.xlm"
+                  },
+                  {
+                    "string": "gamma.xlm"
                   }
                 ]
               }
@@ -187,7 +308,7 @@
                     "symbol": "Settlement"
                   },
                   {
-                    "string": "tie.xlm"
+                    "string": "alpha.xlm"
                   }
                 ]
               },
@@ -199,7 +320,7 @@
                       "symbol": "clearing_price"
                     },
                     "val": {
-                      "u64": "500"
+                      "u64": "100"
                     }
                   },
                   {
@@ -231,7 +352,7 @@
                       "symbol": "winning_bid"
                     },
                     "val": {
-                      "u64": "500"
+                      "u64": "200"
                     }
                   }
                 ]

@@ -76,6 +76,105 @@ mod tests {
     }
 
     #[test]
+    fn list_auctions_paginates_in_creation_order() {
+        let env = Env::default();
+        let contract_id = env.register(AuctionContract, ());
+        let client = AuctionContractClient::new(&env, &contract_id);
+
+        // Empty state: every helper returns an empty Vec, count is zero.
+        assert_eq!(client.auction_count(), 0);
+        assert_eq!(client.list_auctions(&0, &10).len(), 0);
+        assert_eq!(client.list_active_auctions(&0, &0, &10).len(), 0);
+        assert_eq!(client.list_settled_auctions(&0, &10).len(), 0);
+
+        // Create three auctions with distinct windows so we can drive the
+        // active/settled filters independently of one another.
+        let alpha = String::from_str(&env, "alpha.xlm");
+        let beta = String::from_str(&env, "beta.xlm");
+        let gamma = String::from_str(&env, "gamma.xlm");
+        client.create_auction(&alpha, &100, &10, &20);
+        client.create_auction(&beta, &100, &30, &40);
+        client.create_auction(&gamma, &100, &50, &60);
+
+        assert_eq!(client.auction_count(), 3);
+
+        let page1 = client.list_auctions(&0, &2);
+        assert_eq!(page1.len(), 2);
+        assert_eq!(page1.get_unchecked(0), alpha);
+        assert_eq!(page1.get_unchecked(1), beta);
+
+        let page2 = client.list_auctions(&2, &2);
+        assert_eq!(page2.len(), 1);
+        assert_eq!(page2.get_unchecked(0), gamma);
+
+        // Offset past the end is empty, not an error.
+        assert_eq!(client.list_auctions(&99, &10).len(), 0);
+    }
+
+    #[test]
+    fn list_active_and_settled_filters_partition_by_state() {
+        let env = Env::default();
+        let contract_id = env.register(AuctionContract, ());
+        let client = AuctionContractClient::new(&env, &contract_id);
+
+        let alpha = String::from_str(&env, "alpha.xlm");
+        let beta = String::from_str(&env, "beta.xlm");
+        let gamma = String::from_str(&env, "gamma.xlm");
+
+        client.create_auction(&alpha, &100, &10, &20);
+        client.create_auction(&beta, &100, &30, &40);
+        client.create_auction(&gamma, &100, &50, &60);
+
+        // At t=15: only alpha is currently accepting bids. None settled.
+        let active = client.list_active_auctions(&15, &0, &10);
+        assert_eq!(active.len(), 1);
+        assert_eq!(active.get_unchecked(0), alpha);
+        assert_eq!(client.list_settled_auctions(&0, &10).len(), 0);
+
+        // Settle alpha at t=21. After settlement it must drop out of the
+        // active set even at a time inside its original bidding window.
+        let bidder = Address::generate(&env);
+        client.place_bid(&alpha, &bidder, &200, &12);
+        client.settle(&alpha, &21);
+
+        let still_active = client.list_active_auctions(&15, &0, &10);
+        assert_eq!(still_active.len(), 0);
+
+        let settled = client.list_settled_auctions(&0, &10);
+        assert_eq!(settled.len(), 1);
+        assert_eq!(settled.get_unchecked(0), alpha);
+
+        // At t=35: beta is active, alpha is settled, gamma hasn't started.
+        let active_mid = client.list_active_auctions(&35, &0, &10);
+        assert_eq!(active_mid.len(), 1);
+        assert_eq!(active_mid.get_unchecked(0), beta);
+
+        // Pagination on filtered list: offset within matches works.
+        let page = client.list_active_auctions(&35, &1, &10);
+        assert_eq!(page.len(), 0);
+    }
+
+    #[test]
+    fn list_helpers_cap_limit_at_max_page_size() {
+        let env = Env::default();
+        let contract_id = env.register(AuctionContract, ());
+        let client = AuctionContractClient::new(&env, &contract_id);
+
+        // Create a handful of auctions; ask for a huge limit and verify the
+        // contract caps it at MAX_PAGE_SIZE instead of returning the full
+        // index (which would be unbounded). Label minimum length is 3, so use
+        // "namXY.xlm" rather than "nX.xlm".
+        for i in 0..5u32 {
+            let s = format!("nam{i:02}.xlm");
+            let name = String::from_str(&env, &s);
+            client.create_auction(&name, &100, &10, &20);
+        }
+        let huge = client.list_auctions(&0, &u32::MAX);
+        assert!(huge.len() <= crate::MAX_PAGE_SIZE);
+        assert_eq!(huge.len(), 5);
+    }
+
+    #[test]
     fn test_auction_clearing_price_logic() {
         let env = Env::default();
         let contract_id = env.register(AuctionContract, ());

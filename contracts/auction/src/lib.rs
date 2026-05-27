@@ -36,7 +36,18 @@ pub struct Auction {
 enum DataKey {
     Auction(String),
     Settlement(String),
+    /// Ordered index of every auction name ever created. Append-only — names
+    /// are never removed even after settlement, so pagination offsets stay
+    /// stable across calls (a client may keep a cursor across pages without
+    /// fearing entries shifting under it).
+    AuctionIndex,
 }
+
+/// Maximum names returned by any list/filter helper in a single call.
+/// Bounded to keep the per-call budget predictable; callers paginate by
+/// passing successive `offset` values until they receive fewer than
+/// `MAX_PAGE_SIZE` results.
+pub const MAX_PAGE_SIZE: u32 = 100;
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -78,6 +89,7 @@ impl AuctionContract {
             bids: Vec::new(&env),
         };
         env.storage().persistent().set(&key, &auction);
+        append_auction_name(&env, &name);
         Ok(())
     }
 
@@ -144,6 +156,117 @@ impl AuctionContract {
     pub fn auction(env: Env, name: String) -> Option<Auction> {
         env.storage().persistent().get(&DataKey::Auction(name))
     }
+
+    /// Total number of auctions ever created. Useful for clients that want
+    /// to size a paging UI before fetching pages.
+    pub fn auction_count(env: Env) -> u32 {
+        auction_index(&env).len()
+    }
+
+    /// Paginated read-only listing of every auction name, in creation order.
+    /// Bounded by `MAX_PAGE_SIZE`; `limit` is clamped if larger.
+    pub fn list_auctions(env: Env, offset: u32, limit: u32) -> Vec<String> {
+        slice_index(&env, &auction_index(&env), offset, limit)
+    }
+
+    /// Filter: names of auctions currently accepting bids at `now_unix`
+    /// (i.e. `starts_at <= now_unix <= ends_at`) and not yet settled.
+    /// Ordering: creation order. Bounded by `MAX_PAGE_SIZE`.
+    pub fn list_active_auctions(env: Env, now_unix: u64, offset: u32, limit: u32) -> Vec<String> {
+        filter_index(&env, offset, limit, |env, name| {
+            if env
+                .storage()
+                .persistent()
+                .has(&DataKey::Settlement(name.clone()))
+            {
+                return false;
+            }
+            match env
+                .storage()
+                .persistent()
+                .get::<_, Auction>(&DataKey::Auction(name.clone()))
+            {
+                Some(a) => a.starts_at <= now_unix && now_unix <= a.ends_at,
+                None => false,
+            }
+        })
+    }
+
+    /// Filter: names of auctions that have a recorded `Settlement`.
+    /// Ordering: creation order. Bounded by `MAX_PAGE_SIZE`.
+    pub fn list_settled_auctions(env: Env, offset: u32, limit: u32) -> Vec<String> {
+        filter_index(&env, offset, limit, |env, name| {
+            env.storage()
+                .persistent()
+                .has(&DataKey::Settlement(name.clone()))
+        })
+    }
+}
+
+fn auction_index(env: &Env) -> Vec<String> {
+    env.storage()
+        .persistent()
+        .get(&DataKey::AuctionIndex)
+        .unwrap_or_else(|| Vec::new(env))
+}
+
+fn append_auction_name(env: &Env, name: &String) {
+    let mut index = auction_index(env);
+    index.push_back(name.clone());
+    env.storage()
+        .persistent()
+        .set(&DataKey::AuctionIndex, &index);
+}
+
+fn slice_index(env: &Env, index: &Vec<String>, offset: u32, limit: u32) -> Vec<String> {
+    let mut out = Vec::new(env);
+    let total = index.len();
+    if offset >= total {
+        return out;
+    }
+    let capped_limit = if limit > MAX_PAGE_SIZE {
+        MAX_PAGE_SIZE
+    } else {
+        limit
+    };
+    let mut i = offset;
+    while i < total && (i - offset) < capped_limit {
+        if let Some(name) = index.get(i) {
+            out.push_back(name);
+        }
+        i += 1;
+    }
+    out
+}
+
+fn filter_index(
+    env: &Env,
+    offset: u32,
+    limit: u32,
+    keep: impl Fn(&Env, &String) -> bool,
+) -> Vec<String> {
+    let index = auction_index(env);
+    let capped_limit = if limit > MAX_PAGE_SIZE {
+        MAX_PAGE_SIZE
+    } else {
+        limit
+    };
+    let mut matched = 0u32;
+    let mut emitted = Vec::new(env);
+    for (i, name) in index.iter().enumerate() {
+        if !keep(env, &name) {
+            continue;
+        }
+        if matched >= offset && (emitted.len() as u32) < capped_limit {
+            emitted.push_back(name);
+        }
+        matched += 1;
+        if (emitted.len() as u32) >= capped_limit {
+            break;
+        }
+        let _ = i;
+    }
+    emitted
 }
 
 fn get_auction(env: &Env, name: &String) -> Result<Auction, AuctionError> {
