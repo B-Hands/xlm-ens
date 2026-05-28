@@ -412,4 +412,98 @@ mod tests {
         let token = client.token(&token_id).unwrap();
         assert_eq!(token.approved, Some(approved));
     }
+
+    // ── #151: enumeration-consistency invariants ───────────────────────────
+    // The owner token list, owner_of, and the per-owner index must stay aligned
+    // after transfers/approvals, with no duplicate owner-token entries.
+
+    use soroban_sdk::Vec as SdkVec;
+
+    fn assert_owner_enumeration_consistent(
+        env: &Env,
+        client: &NftContractClient,
+        owner: &Address,
+    ) {
+        let balance = client.balance_of(owner);
+        let mut seen: SdkVec<String> = SdkVec::new(env);
+        for i in 0..balance {
+            let token_id = client
+                .token_of_owner_by_index(owner, &i)
+                .expect("every index below balance_of must resolve to a token");
+            assert!(
+                !seen.contains(&token_id),
+                "duplicate owner-token entry detected in enumeration"
+            );
+            assert_eq!(
+                client.owner_of(&token_id),
+                Some(owner.clone()),
+                "owner_of must agree with the owner token list"
+            );
+            seen.push_back(token_id);
+        }
+        // Nothing past the reported balance.
+        assert_eq!(client.token_of_owner_by_index(owner, &balance), None);
+    }
+
+    #[test]
+    fn enumeration_consistent_after_owner_transfer() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let client = NftContractClient::new(&env, &env.register(NftContract, ()));
+        let alice = Address::generate(&env);
+        let bob = Address::generate(&env);
+        let t1 = String::from_str(&env, "a.xlm");
+        let t2 = String::from_str(&env, "b.xlm");
+        client.mint(&t1, &alice, &None::<String>);
+        client.mint(&t2, &alice, &None::<String>);
+
+        client.transfer(&t1, &alice, &bob);
+
+        assert_eq!(client.owner_of(&t1), Some(bob.clone()));
+        assert_eq!(client.balance_of(&alice), 1);
+        assert_eq!(client.balance_of(&bob), 1);
+        assert_eq!(client.total_supply(), 2);
+        assert_owner_enumeration_consistent(&env, &client, &alice);
+        assert_owner_enumeration_consistent(&env, &client, &bob);
+    }
+
+    #[test]
+    fn enumeration_consistent_after_approved_transfer() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let client = NftContractClient::new(&env, &env.register(NftContract, ()));
+        let alice = Address::generate(&env);
+        let bob = Address::generate(&env);
+        let operator = Address::generate(&env);
+        let t1 = String::from_str(&env, "a.xlm");
+        client.mint(&t1, &alice, &None::<String>);
+
+        client.approve(&t1, &alice, &operator);
+        client.transfer(&t1, &operator, &bob); // performed by the approved operator
+
+        assert_eq!(client.owner_of(&t1), Some(bob.clone()));
+        assert_eq!(client.balance_of(&alice), 0);
+        assert_eq!(client.balance_of(&bob), 1);
+        // Approval is cleared on transfer.
+        assert_eq!(client.token(&t1).unwrap().approved, None);
+        assert_owner_enumeration_consistent(&env, &client, &alice);
+        assert_owner_enumeration_consistent(&env, &client, &bob);
+    }
+
+    #[test]
+    fn no_op_self_transfer_does_not_duplicate_owner_token() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let client = NftContractClient::new(&env, &env.register(NftContract, ()));
+        let alice = Address::generate(&env);
+        let t1 = String::from_str(&env, "a.xlm");
+        client.mint(&t1, &alice, &None::<String>);
+
+        client.transfer(&t1, &alice, &alice); // owner unchanged
+
+        assert_eq!(client.owner_of(&t1), Some(alice.clone()));
+        assert_eq!(client.balance_of(&alice), 1);
+        // Key invariant: a no-op owner change must not create a duplicate entry.
+        assert_owner_enumeration_consistent(&env, &client, &alice);
+    }
 }

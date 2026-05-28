@@ -420,6 +420,8 @@ impl fmt::Display for AuctionStatus {
 #[derive(Debug, Clone)]
 pub struct AuctionCreateRequest {
     pub name: String,
+    pub asset: String,
+    pub treasury: String,
     pub reserve_price: u64,
     pub duration_seconds: u64,
     pub signer: Option<String>,
