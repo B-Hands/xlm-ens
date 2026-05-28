@@ -203,6 +203,9 @@ for wasm in target/wasm32-unknown-unknown/release/xlm_ns_*.wasm; do
   soroban contract spec --wasm "$wasm" --output json \
     > "artifacts/specs/${base}.json"
 done
+
+# Optional: Run mutation tests to verify invariant coverage
+./scripts/mutants.sh
 ```
 
 If you do not have `soroban-cli` installed:
