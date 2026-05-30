@@ -34,3 +34,11 @@ path = "integration/auction_test.rs"
 [[test]]
 name = "bridge_test"
 path = "integration/bridge_test.rs"
+
+# Storage / hot-path benchmarks. Marked `#[ignore]` in source so they do not
+# run in default `cargo test`; invoke with:
+#   cargo test --test storage_benchmarks -- --ignored --nocapture
+# or `scripts/run-benchmarks.sh`.
+[[test]]
+name = "storage_benchmarks"
+path = "benches/storage_benchmarks.rs"

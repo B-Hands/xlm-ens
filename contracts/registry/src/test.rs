@@ -1,8 +1,11 @@
 #[cfg(test)]
 mod tests {
-    use soroban_sdk::{testutils::Address as _, Address, Env, String};
+    use soroban_sdk::{testutils::Address as _, testutils::Events as _, Address, Env, String};
 
-    use crate::{RegistryContract, RegistryContractClient, RegistryError};
+    use crate::{
+        inject_stale_index_entry, NameState, RegistryContract, RegistryContractClient,
+        RegistryError,
+    };
 
     struct TimeHelper {
         pub now: u64,
@@ -52,6 +55,51 @@ mod tests {
         let resolved = client.resolve(&name, &transfer_time);
         assert_eq!(resolved.owner, next_owner);
         assert_eq!(client.names_for_owner(&next_owner).len(), 1);
+    }
+
+    #[test]
+    fn name_state_distinguishes_lifecycle_phases() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(RegistryContract, ());
+        let client = RegistryContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "phase.xlm");
+        let time = TimeHelper::new();
+        let expires_at = time.future(1_000);
+        let grace_period_ends_at = time.future(2_000);
+
+        // Missing before any registration exists.
+        assert_eq!(client.name_state(&name, &time.now), NameState::Missing);
+
+        client.register(
+            &name,
+            &owner,
+            &None::<String>,
+            &None::<String>,
+            &time.now,
+            &expires_at,
+            &grace_period_ends_at,
+        );
+
+        // Active up to and including the expiry instant.
+        assert_eq!(client.name_state(&name, &time.future(500)), NameState::Active);
+        assert_eq!(client.name_state(&name, &expires_at), NameState::Active);
+        // Grace period between expiry and the grace-period end (inclusive).
+        assert_eq!(
+            client.name_state(&name, &time.future(1_500)),
+            NameState::GracePeriod
+        );
+        assert_eq!(
+            client.name_state(&name, &grace_period_ends_at),
+            NameState::GracePeriod
+        );
+        // Claimable strictly after the grace period ends.
+        assert_eq!(
+            client.name_state(&name, &(grace_period_ends_at + 1)),
+            NameState::Claimable
+        );
     }
 
     #[test]
@@ -407,5 +455,217 @@ mod tests {
         let client = RegistryContractClient::new(&env, &contract_id);
 
         assert!(!client.supports_admin_recovery());
+    }
+
+    // ---- issue #303: owner-index audit helper ----
+
+    #[test]
+    fn audit_owner_index_is_empty_for_consistent_state() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(RegistryContract, ());
+        let client = RegistryContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "audit-ok.xlm");
+        let time = TimeHelper::new();
+
+        client.register(
+            &name,
+            &owner,
+            &None::<String>,
+            &None::<String>,
+            &time.now,
+            &time.future(1_000),
+            &time.future(2_000),
+        );
+
+        let stale = client.audit_owner_index(&owner);
+        assert_eq!(stale.len(), 0, "expected no stale entries after normal registration");
+    }
+
+    #[test]
+    fn audit_owner_index_is_empty_after_transfer() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(RegistryContract, ());
+        let client = RegistryContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let next_owner = Address::generate(&env);
+        let name = String::from_str(&env, "audit-xfer.xlm");
+        let time = TimeHelper::new();
+
+        client.register(
+            &name,
+            &owner,
+            &None::<String>,
+            &None::<String>,
+            &time.now,
+            &time.future(1_000),
+            &time.future(2_000),
+        );
+        client.transfer(&name, &owner, &next_owner, &time.future(10));
+
+        // Both old and new owner indices must be consistent after transfer.
+        assert_eq!(
+            client.audit_owner_index(&owner).len(),
+            0,
+            "previous owner index should be clean after transfer"
+        );
+        assert_eq!(
+            client.audit_owner_index(&next_owner).len(),
+            0,
+            "new owner index should be clean after transfer"
+        );
+    }
+
+    #[test]
+    fn audit_owner_index_is_empty_for_unknown_owner() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(RegistryContract, ());
+        let client = RegistryContractClient::new(&env, &contract_id);
+
+        let stranger = Address::generate(&env);
+        let stale = client.audit_owner_index(&stranger);
+        assert_eq!(stale.len(), 0, "unknown owner should have an empty audit result");
+    }
+
+    #[test]
+    fn audit_owner_index_detects_stale_index_entry() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(RegistryContract, ());
+        let client = RegistryContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let phantom = String::from_str(&env, "phantom.xlm");
+
+        // Inject an index entry that has no backing registry entry, simulating
+        // the kind of inconsistency that a failed storage migration could leave.
+        env.as_contract(&contract_id, || {
+            inject_stale_index_entry(&env, &owner, &phantom);
+        });
+
+        let stale = client.audit_owner_index(&owner);
+        assert_eq!(stale.len(), 1, "expected exactly one stale entry");
+        assert_eq!(stale.get(0).unwrap(), phantom);
+    }
+
+    // ---- issue #304: transfer event schema ----
+    //
+    // The transfer event schema is:
+    //   topics: ("name", "transfer")
+    //   data:   (name: String, old_owner: Address, new_owner: Address)
+    //
+    // Indexers that subscribe to the registry contract can rely on this layout
+    // to track ownership changes.
+
+    #[test]
+    fn transfer_emits_event_with_name_old_owner_and_new_owner() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(RegistryContract, ());
+        let client = RegistryContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let next_owner = Address::generate(&env);
+        let name = String::from_str(&env, "event-xfer.xlm");
+        let time = TimeHelper::new();
+
+        client.register(
+            &name,
+            &owner,
+            &None::<String>,
+            &None::<String>,
+            &time.now,
+            &time.future(1_000),
+            &time.future(2_000),
+        );
+
+        client.transfer(&name, &owner, &next_owner, &time.future(10));
+
+        // Verify the exact event schema so indexers can depend on a stable layout.
+        use soroban_sdk::IntoVal;
+        assert_eq!(
+            env.events().all(),
+            soroban_sdk::vec![
+                &env,
+                (
+                    contract_id.clone(),
+                    (
+                        soroban_sdk::symbol_short!("name"),
+                        soroban_sdk::symbol_short!("transfer"),
+                    )
+                        .into_val(&env),
+                    (name.clone(), owner.clone(), next_owner.clone()).into_val(&env),
+                )
+            ]
+        );
+    }
+
+    #[test]
+    fn transfer_event_is_emitted_once_per_transfer() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(RegistryContract, ());
+        let client = RegistryContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let second = Address::generate(&env);
+        let third = Address::generate(&env);
+        let name = String::from_str(&env, "multi-xfer.xlm");
+        let time = TimeHelper::new();
+
+        client.register(
+            &name,
+            &owner,
+            &None::<String>,
+            &None::<String>,
+            &time.now,
+            &time.future(10_000),
+            &time.future(20_000),
+        );
+
+        // Verify each transfer individually — Soroban's testutils scope events
+        // per invocation, so we check the schema after each call.
+        use soroban_sdk::IntoVal;
+
+        client.transfer(&name, &owner, &second, &time.future(10));
+        assert_eq!(
+            env.events().all(),
+            soroban_sdk::vec![
+                &env,
+                (
+                    contract_id.clone(),
+                    (
+                        soroban_sdk::symbol_short!("name"),
+                        soroban_sdk::symbol_short!("transfer"),
+                    )
+                        .into_val(&env),
+                    (name.clone(), owner.clone(), second.clone()).into_val(&env),
+                ),
+            ],
+            "first transfer event should carry (name, old_owner, new_owner)"
+        );
+
+        client.transfer(&name, &second, &third, &time.future(20));
+        assert_eq!(
+            env.events().all(),
+            soroban_sdk::vec![
+                &env,
+                (
+                    contract_id.clone(),
+                    (
+                        soroban_sdk::symbol_short!("name"),
+                        soroban_sdk::symbol_short!("transfer"),
+                    )
+                        .into_val(&env),
+                    (name.clone(), second.clone(), third.clone()).into_val(&env),
+                ),
+            ],
+            "second transfer event should carry (name, old_owner, new_owner)"
+        );
     }
 }

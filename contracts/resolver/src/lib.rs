@@ -1,27 +1,31 @@
 mod test;
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, Address, Env, IntoVal, Map, String, Symbol,
+    contract, contracterror, contractimpl, contracttype, Address, Env, IntoVal, Map, String,
+    Symbol, Vec,
 };
 use xlm_ns_common::soroban::validate_fqdn_soroban;
 use xlm_ns_common::RegistryEntry;
-use xlm_ns_common::MAX_TEXT_RECORDS;
+use xlm_ns_common::{MAX_TEXT_RECORDS, MAX_TEXT_RECORD_VALUE_LENGTH};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
 pub struct ResolutionRecord {
     pub owner: Address,
-    pub address: String,
+    pub addresses: Map<String, String>, // chain_name -> address (e.g., "stellar" -> address, "ethereum" -> address)
     pub text_records: Map<String, String>,
     pub updated_at: u64,
 }
+
+// For backwards compatibility, use a default chain identifier
+const DEFAULT_CHAIN: &str = "stellar";
 
 #[derive(Clone)]
 #[contracttype]
 enum DataKey {
     Forward(String),
-    Reverse(String),
-    Primary(String),
+    Reverse(String), // address -> name (for primary/reverse lookups)
+    Primary(String), // address -> name (for primary names)
     Registry,
 }
 
@@ -34,6 +38,10 @@ pub enum ResolverError {
     Unauthorized = 3,
     TooManyTextRecords = 4,
     NotInitialized = 5,
+    TextRecordValueTooLong = 6,
+    InvalidChain = 7,
+    // #314: text-record key failed normalization check
+    InvalidKey = 8,
 }
 
 #[contract]
@@ -68,20 +76,44 @@ impl ResolverContract {
             None => owner.clone(),
         };
 
-        let text_records = match get_record(&env, &name) {
+        // Get existing record and clean up old primary mappings if address changes
+        let mut addresses = match get_record(&env, &name) {
             Ok(existing) => {
                 if registry_backed_owner.is_none() && existing.owner != canonical_owner {
                     return Err(ResolverError::Unauthorized);
                 }
-                existing.text_records
+                // Issue #316: Clean up old reverse/primary mappings when address changes
+                if let Some(old_stellar_addr) = existing
+                    .addresses
+                    .get(String::from_str(&env, DEFAULT_CHAIN))
+                {
+                    if old_stellar_addr != address {
+                        env.storage()
+                            .persistent()
+                            .remove(&DataKey::Reverse(old_stellar_addr.clone()));
+                        env.storage()
+                            .persistent()
+                            .remove(&DataKey::Primary(old_stellar_addr));
+                    }
+                }
+                existing.addresses
             }
+            Err(ResolverError::RecordNotFound) => Map::new(&env),
+            Err(err) => return Err(err),
+        };
+
+        // Set the stellar address as the default chain
+        addresses.set(String::from_str(&env, DEFAULT_CHAIN), address.clone());
+
+        let text_records = match get_record(&env, &name) {
+            Ok(existing) => existing.text_records,
             Err(ResolverError::RecordNotFound) => Map::new(&env),
             Err(err) => return Err(err),
         };
 
         let record = ResolutionRecord {
             owner: canonical_owner,
-            address: address.clone(),
+            addresses,
             text_records,
             updated_at: now_unix,
         };
@@ -94,6 +126,50 @@ impl ResolverContract {
         Ok(())
     }
 
+    // Issue #317: Add multi-chain address setter
+    pub fn set_address(
+        env: Env,
+        name: String,
+        caller: Address,
+        chain: String,
+        address: String,
+        now_unix: u64,
+    ) -> Result<(), ResolverError> {
+        let mut record = get_record(&env, &name)?;
+        assert_owner(&env, &name, &record, &caller, now_unix)?;
+
+        // For Stellar chain, handle reverse mappings
+        if chain == String::from_str(&env, DEFAULT_CHAIN) {
+            // Clean up old reverse mappings for Stellar
+            if let Some(old_addr) = record.addresses.get(chain.clone()) {
+                if old_addr != address {
+                    env.storage()
+                        .persistent()
+                        .remove(&DataKey::Reverse(old_addr.clone()));
+                    env.storage()
+                        .persistent()
+                        .remove(&DataKey::Primary(old_addr));
+                }
+            }
+            // Set new reverse mapping
+            env.storage()
+                .persistent()
+                .set(&DataKey::Reverse(address.clone()), &name);
+        }
+
+        record.addresses.set(chain, address);
+        record.updated_at = now_unix;
+        put_record(&env, &name, &record);
+        Ok(())
+    }
+
+    // Issue #317: Get address for a specific chain
+    pub fn get_address(env: Env, name: String, chain: String) -> Option<String> {
+        get_record(&env, &name)
+            .ok()
+            .and_then(|record| record.addresses.get(chain))
+    }
+
     pub fn set_text_record(
         env: Env,
         name: String,
@@ -102,6 +178,16 @@ impl ResolverContract {
         value: String,
         now_unix: u64,
     ) -> Result<(), ResolverError> {
+        // Issue #314: Validate text-record key normalization.
+        // Keys must be 1–64 bytes, lowercase ASCII, and contain only
+        // letters, digits, dots (.), dashes (-), or underscores (_).
+        validate_text_record_key(&key).map_err(|_| ResolverError::InvalidKey)?;
+
+        // Issue #315: Validate text record value size
+        if (value.len() as usize) > MAX_TEXT_RECORD_VALUE_LENGTH {
+            return Err(ResolverError::TextRecordValueTooLong);
+        }
+
         let mut record = get_record(&env, &name)?;
         assert_owner(&env, &name, &record, &caller, now_unix)?;
         if !record.text_records.contains_key(key.clone())
@@ -123,27 +209,36 @@ impl ResolverContract {
     ) -> Result<(), ResolverError> {
         let record = get_record(&env, &name)?;
         assert_owner(&env, &name, &record, &caller, 0)?;
-        if record.address != address {
+        if let Some(stellar_addr) = record.addresses.get(String::from_str(&env, DEFAULT_CHAIN)) {
+            if stellar_addr != address {
+                return Err(ResolverError::Unauthorized);
+            }
+        } else {
             return Err(ResolverError::Unauthorized);
         }
         env.storage()
             .persistent()
-            .set(&DataKey::Primary(record.address.clone()), &name);
+            .set(&DataKey::Primary(address), &name);
         Ok(())
     }
 
     pub fn remove_record(env: Env, name: String, caller: Address) -> Result<(), ResolverError> {
         let record = get_record(&env, &name)?;
         assert_owner(&env, &name, &record, &caller, 0)?;
+
+        // Clean up reverse mappings for all chains, particularly Stellar
+        if let Some(stellar_addr) = record.addresses.get(String::from_str(&env, DEFAULT_CHAIN)) {
+            env.storage()
+                .persistent()
+                .remove(&DataKey::Reverse(stellar_addr.clone()));
+            env.storage()
+                .persistent()
+                .remove(&DataKey::Primary(stellar_addr));
+        }
+
         env.storage()
             .persistent()
             .remove(&DataKey::Forward(name.clone()));
-        env.storage()
-            .persistent()
-            .remove(&DataKey::Reverse(record.address.clone()));
-        env.storage()
-            .persistent()
-            .remove(&DataKey::Primary(record.address));
         Ok(())
     }
 
@@ -156,6 +251,16 @@ impl ResolverContract {
 
     pub fn resolve(env: Env, name: String) -> Option<ResolutionRecord> {
         env.storage().persistent().get(&DataKey::Forward(name))
+    }
+
+    // Helper method to get the default (Stellar) address for backwards compatibility
+    pub fn get_stellar_address(env: Env, name: String) -> Option<String> {
+        let env_for_key = env.clone();
+        Self::resolve(env, name).and_then(|record| {
+            record
+                .addresses
+                .get(String::from_str(&env_for_key, DEFAULT_CHAIN))
+        })
     }
 
     pub fn has_record(env: Env, name: String) -> bool {
@@ -182,6 +287,33 @@ impl ResolverContract {
         record.owner = new_owner;
         put_record(&env, &name, &record);
         Ok(())
+    }
+
+    // Issue #321: Batch resolver query for multiple names
+    pub fn batch_resolve(env: Env, names: Vec<String>) -> Vec<Option<ResolutionRecord>> {
+        let mut out = Vec::new(&env);
+        for name in names.iter() {
+            out.push_back(env.storage().persistent().get(&DataKey::Forward(name.clone())));
+        }
+        out
+    }
+
+    // Issue #321: Batch reverse lookup for multiple addresses
+    pub fn batch_reverse(env: Env, addresses: Vec<String>) -> Vec<Option<String>> {
+        let mut out = Vec::new(&env);
+        for address in addresses.iter() {
+            out.push_back(
+                env.storage()
+                    .persistent()
+                    .get(&DataKey::Primary(address.clone()))
+                    .or_else(|| {
+                        env.storage()
+                            .persistent()
+                            .get(&DataKey::Reverse(address.clone()))
+                    }),
+            );
+        }
+        out
     }
 }
 
@@ -244,4 +376,34 @@ fn put_record(env: &Env, name: &String, record: &ResolutionRecord) {
     env.storage()
         .persistent()
         .set(&DataKey::Forward(name.clone()), record);
+}
+
+/// Issue #314: Validate a text-record key.
+///
+/// Rules:
+/// - Length: 1–64 bytes (inclusive).
+/// - Characters: lowercase ASCII letters `a-z`, digits `0-9`, dot `.`,
+///   dash `-`, or underscore `_`.
+/// - Namespace convention (e.g. `com.twitter`, `org.did`) is allowed via dots.
+///
+/// Keys are stored exactly as supplied; callers must normalise before calling
+/// (e.g. lowercase the key) because two differently-cased writes produce two
+/// distinct storage entries.
+fn validate_text_record_key(key: &String) -> Result<(), ()> {
+    const MAX_KEY_LEN: usize = 64;
+    let len = key.len() as usize;
+    if len == 0 || len > MAX_KEY_LEN {
+        return Err(());
+    }
+    let mut buf = [0u8; MAX_KEY_LEN];
+    key.copy_into_slice(&mut buf[..len]);
+    for byte in &buf[..len] {
+        let b = *byte;
+        let ok =
+            b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-' || b == b'_';
+        if !ok {
+            return Err(());
+        }
+    }
+    Ok(())
 }

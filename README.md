@@ -241,6 +241,7 @@ Rust to create temporary build directories in the default macOS temp location.
 
 - Testnet operator runbook: `docs/testnet-operator-runbook.md`
 - Bridge payload + resolver schema docs: `docs/schemas.md`
+- Version compatibility matrix: `docs/compatibility.md`
 
 ## Roadmap
 

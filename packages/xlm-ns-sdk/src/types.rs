@@ -146,6 +146,7 @@ pub struct RegistrationQuote {
     pub total_fee: u64,
     pub fee_currency: String,
     pub expires_at: u64,
+    pub grace_period_ends_at: u64,
     pub quoted_at: u64,
     pub contract_id: Option<String>,
 }
@@ -260,6 +261,13 @@ pub struct TextRecordUpdate {
     pub name: String,
     pub key: String,
     pub value: Option<String>,
+    pub signer: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextRecordsUpdate {
+    pub name: String,
+    pub records: std::collections::HashMap<String, Option<String>>,
     pub signer: Option<String>,
 }
 
@@ -420,6 +428,8 @@ impl fmt::Display for AuctionStatus {
 #[derive(Debug, Clone)]
 pub struct AuctionCreateRequest {
     pub name: String,
+    pub asset: String,
+    pub treasury: String,
     pub reserve_price: u64,
     pub duration_seconds: u64,
     pub signer: Option<String>,

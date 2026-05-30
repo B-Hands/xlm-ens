@@ -1,5 +1,4 @@
 use crate::config::NetworkConfig;
-use crate::output::OutputFormat;
 use crate::signer::SignerProfile;
 use anyhow::Context;
 use xlm_ns_sdk::client::XlmNsClient;
