@@ -19,5 +19,6 @@ pub use time::{
 pub use types::RegistryEntry;
 pub use types::{NameHash, NameRecord, Tld};
 pub use validation::{
-    parse_fqdn, validate_chain_name, validate_label, validate_owner, validate_registration_years,
+    parse_fqdn, validate_account_address, validate_chain_name, validate_contract_id,
+    validate_label, validate_owner, validate_registration_years,
 };

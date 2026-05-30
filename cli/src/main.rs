@@ -92,7 +92,7 @@ enum Commands {
     },
     /// Read or mutate resolver text records.
     #[command(subcommand)]
-    Text(TextCommands),
+    Text(TextCommand),
     /// Transfer ownership of a name.
     Transfer {
         /// Name to transfer
@@ -132,6 +132,9 @@ enum Commands {
     /// Inspect NFT ownership metadata.
     #[command(subcommand)]
     Nft(NftCommands),
+    /// Manage configuration files and validation.
+    #[command(subcommand)]
+    Config(ConfigCommands),
     /// Show registration details for a single name.
     Whois {
         /// Name to inspect
@@ -295,6 +298,40 @@ enum NftCommands {
 }
 
 #[derive(Subcommand)]
+enum ConfigCommands {
+    /// Create a config file template.
+    Init {
+        /// Config file path. Defaults to the CLI search path's first entry.
+        #[arg(long)]
+        path: Option<PathBuf>,
+        /// Network profile to render into the template.
+        #[arg(long, default_value = "testnet")]
+        network: String,
+        /// Overwrite an existing file.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Open the config file in the user's editor.
+    Edit {
+        /// Config file path. Defaults to the CLI search path's first entry.
+        #[arg(long)]
+        path: Option<PathBuf>,
+        /// Network profile to render when creating a new file.
+        #[arg(long, default_value = "testnet")]
+        network: String,
+    },
+    /// Validate a config file without invoking any contract RPCs.
+    Validate {
+        /// Config file path. Falls back to the configured search path.
+        #[arg(long)]
+        path: Option<PathBuf>,
+        /// Network to validate against.
+        #[arg(long, default_value = "testnet")]
+        network: String,
+    },
+}
+
+#[derive(Subcommand)]
 enum TextCommand {
     /// Read a text record value for a name.
     Get { name: String, key: String },
@@ -365,19 +402,13 @@ async fn run() -> anyhow::Result<()> {
             commands::reverse::run_reverse(config, &address).await
         }
         Commands::Text(sub) => match sub {
-            TextCommands::Get { name, key } => commands::text::run_get(config, &name, &key).await,
-            TextCommands::Set {
+            TextCommand::Get { name, key } => commands::text::run_get(config, &name, &key).await,
+            TextCommand::Set {
                 name,
                 key,
                 value,
                 signer,
             } => commands::text::run_set(config, &name, &key, value, resolve_signer(signer)?).await,
-            TextCommand::Export { name, out } => {
-                commands::text::run_export(config, cli.output, &name, out.as_deref()).await
-            }
-            TextCommand::Import { name, file, signer } => {
-                commands::text::run_import(config, cli.output, &name, &file, resolve_signer(signer)?).await
-            }
         },
         Commands::Transfer {
             name,
@@ -419,6 +450,9 @@ async fn run() -> anyhow::Result<()> {
             AuctionCommands::Settle { name, signer } => {
                 commands::auction::run_settle(config, &name, resolve_signer(signer)?).await
             }
+            AuctionCommands::Export { .. } | AuctionCommands::Import { .. } => {
+                Err(anyhow::anyhow!("auction text import/export is not implemented"))
+            }
         },
         Commands::Bridge(command) => match command {
             BridgeCommands::Register { chain } => {
@@ -427,11 +461,11 @@ async fn run() -> anyhow::Result<()> {
             BridgeCommands::Inspect { chain } => {
                 commands::bridge::run_inspect_route(config, &chain).await
             }
-            BridgeCommands::BuildPayload { name, chain } => {
+            BridgeCommands::Payload { name, chain } => {
                 commands::bridge::run_generate_payload(config, &name, &chain).await
             }
             BridgeCommands::TestVectors => {
-                commands::bridge::run_test_vectors(config, cli.output).await
+                Err(anyhow::anyhow!("bridge test vector export is not implemented"))
             }
         },
         Commands::Subdomain(command) => match command {
@@ -453,6 +487,20 @@ async fn run() -> anyhow::Result<()> {
         Commands::Nft(command) => match command {
             NftCommands::Inspect { token_id } => {
                 commands::nft::run_inspect(config, cli.output, &token_id).await
+            }
+        },
+        Commands::Config(command) => match command {
+            ConfigCommands::Init {
+                path,
+                network,
+                force,
+            } => commands::config::run_init(path.or(cli.config.clone()), &network, force).await,
+            ConfigCommands::Edit { path, network } => {
+                commands::config::run_edit(path.or(cli.config.clone()), &network).await
+            }
+            ConfigCommands::Validate { path, network } => {
+                commands::config::run_validate(path.or(cli.config.clone()), &network, cli.output)
+                    .await
             }
         },
         Commands::Whois { name } => commands::whois::run_whois(config, cli.output, &name).await,
@@ -808,6 +856,7 @@ fn validate_contract_policy(
             &[ContractKind::Subdomain],
         ),
         Commands::Nft(_) => ("nft", &[ContractKind::Nft], &[ContractKind::Nft]),
+        Commands::Config(_) => ("config", &[], &[]),
         Commands::Whois { .. } => (
             "whois",
             &[ContractKind::Registry, ContractKind::Resolver],

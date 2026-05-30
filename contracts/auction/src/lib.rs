@@ -48,7 +48,7 @@ enum DataKey {
 
 /// Bounded result window for auction discovery queries (#157).
 const MAX_AUCTION_RESULTS: u32 = 100;
-const MAX_PAGE_SIZE: u32 = MAX_AUCTION_RESULTS;
+const MAX_PAGE_SIZE: u32 = 100;
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -319,6 +319,7 @@ fn auction_index(env: &Env) -> Vec<String> {
         .unwrap_or_else(|| Vec::new(env))
 }
 
+#[allow(dead_code)]
 fn append_auction_name(env: &Env, name: &String) {
     let mut index = auction_index(env);
     index.push_back(name.clone());

@@ -181,7 +181,7 @@ impl ResolverContract {
         validate_text_record_key(&key).map_err(|_| ResolverError::InvalidKey)?;
 
         // Issue #315: Validate text record value size
-        if value.len() > MAX_TEXT_RECORD_VALUE_LENGTH {
+        if (value.len() as usize) > MAX_TEXT_RECORD_VALUE_LENGTH {
             return Err(ResolverError::TextRecordValueTooLong);
         }
 
@@ -252,10 +252,11 @@ impl ResolverContract {
 
     // Helper method to get the default (Stellar) address for backwards compatibility
     pub fn get_stellar_address(env: Env, name: String) -> Option<String> {
+        let env_for_key = env.clone();
         Self::resolve(env, name).and_then(|record| {
             record
                 .addresses
-                .get(String::from_str(&env, DEFAULT_CHAIN))
+                .get(String::from_str(&env_for_key, DEFAULT_CHAIN))
         })
     }
 
@@ -287,21 +288,18 @@ impl ResolverContract {
 
     // Issue #321: Batch resolver query for multiple names
     pub fn batch_resolve(env: Env, names: Vec<String>) -> Vec<Option<ResolutionRecord>> {
-        names
-            .iter()
-            .map(|name| {
-                env.storage()
-                    .persistent()
-                    .get(&DataKey::Forward(name.clone()))
-            })
-            .collect()
+        let mut out = Vec::new(&env);
+        for name in names.iter() {
+            out.push_back(env.storage().persistent().get(&DataKey::Forward(name.clone())));
+        }
+        out
     }
 
     // Issue #321: Batch reverse lookup for multiple addresses
     pub fn batch_reverse(env: Env, addresses: Vec<String>) -> Vec<Option<String>> {
-        addresses
-            .iter()
-            .map(|address| {
+        let mut out = Vec::new(&env);
+        for address in addresses.iter() {
+            out.push_back(
                 env.storage()
                     .persistent()
                     .get(&DataKey::Primary(address.clone()))
@@ -309,9 +307,10 @@ impl ResolverContract {
                         env.storage()
                             .persistent()
                             .get(&DataKey::Reverse(address.clone()))
-                    })
-            })
-            .collect()
+                    }),
+            );
+        }
+        out
     }
 }
 
