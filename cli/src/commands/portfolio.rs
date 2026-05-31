@@ -38,6 +38,11 @@ pub async fn run_portfolio(config: NetworkConfig, output: OutputFormat, owner: &
         .unwrap_or_default()
         .as_secs() as i64;
 
+pub async fn run_portfolio(
+    config: NetworkConfig,
+    output: OutputFormat,
+    owner: &str,
+) -> anyhow::Result<()> {
     let client = XlmNsClient::new(
         config.rpc_url.clone(),
         Some(config.network_passphrase.clone()),
