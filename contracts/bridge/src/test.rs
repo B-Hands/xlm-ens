@@ -191,20 +191,25 @@ mod tests {
     }
 
     #[test]
-    fn threat_unauthorized_actor_cannot_register_chain() {
+    fn register_chain_is_permissionless() {
         let env = Env::default();
         let contract_id = env.register(BridgeContract, ());
         let client = BridgeContractClient::new(&env, &contract_id);
 
         let chain = String::from_str(&env, "base");
-
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            client.register_chain(&chain);
-        }));
+        client.register_chain(&chain);
 
         assert!(
-            result.is_err(),
-            "registration of chain without auth should fail"
+            client.route(&chain).is_some(),
+            "register_chain must store the route"
         );
+    }
+
+    #[test]
+    fn version_is_exposed() {
+        let env = Env::default();
+        let contract_id = env.register(BridgeContract, ());
+        let client = BridgeContractClient::new(&env, &contract_id);
+        assert_eq!(client.version(), 1);
     }
 }

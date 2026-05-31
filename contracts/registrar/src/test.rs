@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use soroban_sdk::{testutils::Address as _, Address, Env, String};
+    use soroban_sdk::{testutils::{Address as _, Events as _}, Address, Env, String};
 
     use crate::expiry::{expiry_from_now, within_grace_period};
     use crate::pricing::price_for_label_length;
@@ -27,6 +27,7 @@ mod tests {
     #[test]
     fn stores_registrations_in_contract_storage() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(RegistrarContract, ());
         let client = RegistrarContractClient::new(&env, &contract_id);
 
@@ -121,6 +122,7 @@ mod tests {
     #[test]
     fn renew_fails_for_claimable_registration() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(RegistrarContract, ());
         let client = RegistrarContractClient::new(&env, &contract_id);
 
@@ -149,6 +151,7 @@ mod tests {
     #[test]
     fn renew_succeeds_at_grace_period_boundary() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(RegistrarContract, ());
         let client = RegistrarContractClient::new(&env, &contract_id);
 
@@ -266,6 +269,7 @@ mod tests {
     #[test]
     fn fee_metrics_track_operations() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(RegistrarContract, ());
         let client = RegistrarContractClient::new(&env, &contract_id);
 
@@ -325,6 +329,7 @@ mod tests {
     #[test]
     fn status_is_active_during_registration_period() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(RegistrarContract, ());
         let client = RegistrarContractClient::new(&env, &contract_id);
         let registry_id = env.register(xlm_ns_registry::RegistryContract, ());
@@ -342,6 +347,7 @@ mod tests {
     #[test]
     fn status_is_grace_period_after_expiry() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(RegistrarContract, ());
         let client = RegistrarContractClient::new(&env, &contract_id);
         let registry_id = env.register(xlm_ns_registry::RegistryContract, ());
@@ -359,6 +365,7 @@ mod tests {
     #[test]
     fn status_is_claimable_after_grace_period() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(RegistrarContract, ());
         let client = RegistrarContractClient::new(&env, &contract_id);
         let registry_id = env.register(xlm_ns_registry::RegistryContract, ());
@@ -378,6 +385,7 @@ mod tests {
     #[test]
     fn treasury_accumulates_exact_fees_across_registrations() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(RegistrarContract, ());
         let client = RegistrarContractClient::new(&env, &contract_id);
         let registry_id = env.register(xlm_ns_registry::RegistryContract, ());
@@ -401,6 +409,7 @@ mod tests {
     #[test]
     fn treasury_accumulates_overpayment_stroops() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(RegistrarContract, ());
         let client = RegistrarContractClient::new(&env, &contract_id);
         let registry_id = env.register(xlm_ns_registry::RegistryContract, ());
@@ -436,6 +445,7 @@ mod tests {
     #[test]
     fn renewal_count_and_treasury_update_correctly() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(RegistrarContract, ());
         let client = RegistrarContractClient::new(&env, &contract_id);
         let registry_id = env.register(xlm_ns_registry::RegistryContract, ());
@@ -454,9 +464,55 @@ mod tests {
         assert_eq!(report.treasury_balance, client.treasury_balance());
     }
 
+    // Issue #142 — registrar event emission
+
+    #[test]
+    fn register_emits_registered_event() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(RegistrarContract, ());
+        let client = RegistrarContractClient::new(&env, &contract_id);
+        let registry_id = env.register(xlm_ns_registry::RegistryContract, ());
+        client.initialize(&registry_id);
+
+        let owner = Address::generate(&env);
+        let label = String::from_str(&env, "events");
+        let quote = client.quote_registration(&label, &1, &100);
+        client.register(&label, &owner, &1, &quote.fee_stroops, &100);
+
+        assert!(
+            !env.events().all().events().is_empty(),
+            "register() must emit at least one event"
+        );
+    }
+
+    #[test]
+    fn renew_emits_renewed_event() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(RegistrarContract, ());
+        let client = RegistrarContractClient::new(&env, &contract_id);
+        let registry_id = env.register(xlm_ns_registry::RegistryContract, ());
+        client.initialize(&registry_id);
+
+        let owner = Address::generate(&env);
+        let label = String::from_str(&env, "renev");
+        let name = String::from_str(&env, "renev.xlm");
+        let quote = client.quote_registration(&label, &1, &100);
+        client.register(&label, &owner, &1, &quote.fee_stroops, &100);
+
+        client.renew(&name, &owner, &1, &quote.fee_stroops, &200);
+
+        assert!(
+            !env.events().all().events().is_empty(),
+            "renew() must emit at least one event"
+        );
+    }
+
     #[test]
     fn accounting_report_matches_fee_metrics() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(RegistrarContract, ());
         let client = RegistrarContractClient::new(&env, &contract_id);
         let registry_id = env.register(xlm_ns_registry::RegistryContract, ());

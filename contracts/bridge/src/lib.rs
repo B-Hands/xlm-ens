@@ -26,11 +26,17 @@ pub enum BridgeError {
     UnsupportedChain = 2,
 }
 
+pub const CONTRACT_VERSION: u32 = 1;
+
 #[contract]
 pub struct BridgeContract;
 
 #[contractimpl]
 impl BridgeContract {
+    pub fn version(_env: Env) -> u32 {
+        CONTRACT_VERSION
+    }
+
     pub fn register_chain(env: Env, chain: String) -> Result<(), BridgeError> {
         validate_chain_name_soroban(&chain).map_err(|_| BridgeError::Validation)?;
         let route = target_for_chain(&env, &chain).ok_or(BridgeError::UnsupportedChain)?;

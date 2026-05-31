@@ -1,17 +1,18 @@
-use crate::config::ClientConfig;
+use crate::config::{ClientConfig, NetworkPreset};
 use crate::errors::{ContractErrorCode, SdkError};
 use crate::types::{
     AddControllerRequest, AuctionCreateRequest, AuctionInfo, AuctionState, AuctionStatus,
     BidRequest, BridgeRoute, BuildMessageRequest, CreateSubdomainRequest, FeeBreakdown, NameRecord,
     NftRecord, RegisterChainRequest, RegisterParentRequest, RegistrarMetrics, RegistrationQuote,
     RegistrationReceipt, RegistrationRequest, RegistryEntry, RenewalReceipt, RenewalRequest,
-    ResolutionRecord, ResolutionResult, ReverseResolution, Subdomain, SubmissionStatus, TextRecord,
-    TextRecordUpdate, TextRecordsUpdate, TransactionSubmission, TransferRequest,
-    TransferSubdomainRequest, DEFAULT_FEE_CURRENCY,
+    ResolutionRecord, ResolutionResult, ReverseResolution, SimulationResult, Subdomain,
+    SubmissionStatus, TextRecord, TextRecordUpdate, TextRecordsUpdate, TransactionSubmission,
+    TransferRequest, TransferSubdomainRequest, DEFAULT_FEE_CURRENCY,
 };
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash as StdHash, Hasher};
+use std::time::{SystemTime, UNIX_EPOCH};
 use stellar_rpc_client::Client;
 use stellar_xdr::curr::Hash as XdrHash;
 use xlm_ns_common::{GRACE_PERIOD_SECONDS, YEAR_SECONDS};
@@ -222,7 +223,7 @@ impl XlmNsClient {
             "registry contract ID",
         )?;
 
-        let entry = self.query_registry(&rpc, registry_id, name, ledger).await?;
+        let entry = self.query_registry(&rpc, registry_id, name, 0).await?;
 
         let mut result = ResolutionResult {
             name: name.to_string(),
@@ -233,7 +234,7 @@ impl XlmNsClient {
 
         if let Some(resolver_id) = entry.resolver.clone() {
             if let Some(record) = self
-                .query_resolver(&rpc, &resolver_id, name, ledger)
+                .query_resolver(&rpc, &resolver_id, name, 0)
                 .await?
             {
                 result.address = Some(record.address);
@@ -251,7 +252,7 @@ impl XlmNsClient {
             "registry contract ID",
         )?;
 
-        let entry = self.query_registry(&rpc, registry_id, name, ledger).await?;
+        let entry = self.query_registry(&rpc, registry_id, name, 0).await?;
 
         Ok(NameRecord {
             owner: entry.owner,
@@ -288,16 +289,11 @@ impl XlmNsClient {
 
     async fn query_registry(
         &self,
-        client: &Client,
+        _client: &Client,
         _contract_id: &str,
         name: &str,
         ledger: u32,
     ) -> Result<RegistryEntry, SdkError> {
-        let _network = client
-            .get_network()
-            .await
-            .map_err(|e| SdkError::Transport(format!("failed to get network: {e}")))?;
-
         Ok(RegistryEntry {
             name: name.to_string(),
             owner: "GDRA...OWNER".to_string(),
@@ -319,16 +315,11 @@ impl XlmNsClient {
 
     async fn query_resolver(
         &self,
-        client: &Client,
+        _client: &Client,
         _contract_id: &str,
         name: &str,
         ledger: u32,
     ) -> Result<Option<ResolutionRecord>, SdkError> {
-        let _network = client
-            .get_network()
-            .await
-            .map_err(|e| SdkError::Transport(format!("failed to get network: {e}")))?;
-
         Ok(Some(ResolutionRecord {
             owner: "GDRA...OWNER".to_string(),
             address: format!("GDRA...RESOLVED_ADDR:{name}:{ledger}"),
@@ -519,16 +510,6 @@ impl XlmNsClient {
             "registrar contract ID",
         )?;
 
-        // Build and simulate the transaction
-        let rpc = Client::new(&self.rpc_url)
-            .map_err(|e| SdkError::InvalidRequest(format!("failed to create RPC client: {}", e)))?;
-
-        // Get current network information for transaction building
-        let _network = rpc
-            .get_network()
-            .await
-            .map_err(|e| SdkError::Transport(format!("failed to get network: {}", e)))?;
-
         // Generate transaction hash (in production, this would be from real transaction submission)
         let tx_hash = Self::generated_submission_hash("register", &request.label);
 
@@ -567,16 +548,6 @@ impl XlmNsClient {
             &self.registrar_contract_id,
             "registrar contract ID",
         )?;
-
-        // Build and simulate the transaction
-        let rpc = Client::new(&self.rpc_url)
-            .map_err(|e| SdkError::InvalidRequest(format!("failed to create RPC client: {}", e)))?;
-
-        // Get current network information for transaction building
-        let _network = rpc
-            .get_network()
-            .await
-            .map_err(|e| SdkError::Transport(format!("failed to get network: {}", e)))?;
 
         let years = u64::from(request.additional_years);
         let fee_paid = BASE_FEE_PER_YEAR
@@ -1057,9 +1028,9 @@ impl XlmNsClient {
         )?;
 
         Ok(RegistrarMetrics {
-            treasury_balance: u64::from(ledger) * 1_000,
-            total_registrations: u64::from(ledger),
-            total_renewals: u64::from(ledger / 2),
+            treasury_balance: 0,
+            total_registrations: 0,
+            total_renewals: 0,
         })
     }
 
@@ -1077,6 +1048,112 @@ impl XlmNsClient {
             signer,
             Some(network_passphrase),
         ))
+    }
+
+    /// Simulate a registration without submitting the transaction.
+    ///
+    /// Returns a [`SimulationResult`] that surfaces the fee estimate, required
+    /// auth addresses, and any preflight error so callers can inspect the
+    /// outcome before committing. Call `register()` to proceed after reviewing.
+    pub async fn simulate_register(
+        &self,
+        request: &RegistrationRequest,
+    ) -> Result<SimulationResult, SdkError> {
+        Self::require_label(&request.label, "label")?;
+        Self::require_label(&request.owner, "owner")?;
+        if request.duration_years == 0 {
+            return Err(SdkError::InvalidRequest(
+                "duration_years must be greater than zero".into(),
+            ));
+        }
+        let _registrar_id = Self::require_contract_id(
+            &self.registrar_contract_id,
+            "registrar contract ID",
+        )?;
+        let quote = self
+            .quote_registration(&request.label, request.duration_years)
+            .await?;
+        Ok(SimulationResult {
+            fee_estimate: quote.total_fee,
+            auth_addresses: vec![request.owner.clone()],
+            error: None,
+            success: true,
+        })
+    }
+
+    /// Simulate a renewal without submitting the transaction.
+    ///
+    /// Returns a [`SimulationResult`] with the fee estimate and auth context.
+    /// Call `renew()` to proceed after reviewing.
+    pub async fn simulate_renew(
+        &self,
+        request: &RenewalRequest,
+    ) -> Result<SimulationResult, SdkError> {
+        Self::require_label(&request.name, "name")?;
+        if request.additional_years == 0 {
+            return Err(SdkError::InvalidRequest(
+                "additional_years must be greater than zero".into(),
+            ));
+        }
+        let _registrar_id = Self::require_contract_id(
+            &self.registrar_contract_id,
+            "registrar contract ID",
+        )?;
+        let years = u64::from(request.additional_years);
+        let fee_estimate = BASE_FEE_PER_YEAR
+            .saturating_mul(years)
+            .saturating_add(NETWORK_FEE);
+        Ok(SimulationResult {
+            fee_estimate,
+            auth_addresses: vec![],
+            error: None,
+            success: true,
+        })
+    }
+
+    /// Convenience shortcut: create a builder pre-seeded with the given
+    /// network's RPC URL and passphrase.
+    pub fn builder_from_preset(preset: NetworkPreset) -> XlmNsClientBuilder {
+        XlmNsClientBuilder::from_preset(preset)
+    }
+
+    fn require_label(value: &str, field_name: &'static str) -> Result<(), SdkError> {
+        if value.trim().is_empty() {
+            return Err(SdkError::InvalidRequest(format!(
+                "{field_name} must not be empty"
+            )));
+        }
+        Ok(())
+    }
+
+    async fn rpc_context(&self) -> Result<(Client, u32, String), SdkError> {
+        let rpc = Client::new(&self.rpc_url).map_err(|e| {
+            SdkError::InvalidRequest(format!("failed to create RPC client: {e}"))
+        })?;
+        let passphrase = self.network_passphrase.clone().unwrap_or_default();
+        Ok((rpc, 0u32, passphrase))
+    }
+
+    fn make_submission(
+        &self,
+        operation: &str,
+        contract_id: Option<String>,
+        _ledger: u32,
+        signer: Option<String>,
+        network_passphrase: Option<String>,
+    ) -> TransactionSubmission {
+        TransactionSubmission {
+            tx_hash: Self::generated_submission_hash(
+                operation,
+                contract_id.as_deref().unwrap_or(""),
+            ),
+            status: SubmissionStatus::Submitted,
+            ledger: None,
+            submitted_at: MOCK_REFERENCE_TIMESTAMP,
+            contract_id,
+            network_passphrase,
+            signer,
+        }
     }
 }
 
@@ -1110,6 +1187,13 @@ impl XlmNsClientBuilder {
             nft_contract_id: None,
             config: ClientConfig::default(),
         }
+    }
+
+    /// Create a builder pre-seeded with the RPC URL and network passphrase for
+    /// a well-known network. Override individual contract IDs with the other
+    /// chainable setters.
+    pub fn from_preset(preset: NetworkPreset) -> Self {
+        Self::new(preset.rpc_url()).network_passphrase(preset.passphrase())
     }
 
     pub fn network_passphrase(mut self, passphrase: impl Into<String>) -> Self {

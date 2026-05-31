@@ -33,7 +33,7 @@ mod tests {
         client.place_bid(&name, &bob, &300, &13);
 
         let settlement = client.settle(&name, &21).unwrap();
-        assert_eq!(settlement.winner, Some(alice));
+        assert_eq!(settlement.winner, Some(alice.clone()));
         assert_eq!(settlement.clearing_price, 300);
         assert!(settlement.sold);
 
@@ -45,6 +45,7 @@ mod tests {
     #[test]
     fn test_auction_no_bids() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(AuctionContract, ());
         let client = AuctionContractClient::new(&env, &contract_id);
 
@@ -104,7 +105,7 @@ mod tests {
 
         let settlement = client.settle(&name, &21).unwrap();
         // First bidder wins in case of tie in current implementation
-        assert_eq!(settlement.winner, Some(alice));
+        assert_eq!(settlement.winner, Some(alice.clone()));
         assert_eq!(settlement.clearing_price, 500);
         assert!(settlement.sold);
 
@@ -130,9 +131,11 @@ mod tests {
         let alpha = String::from_str(&env, "alpha.xlm");
         let beta = String::from_str(&env, "beta.xlm");
         let gamma = String::from_str(&env, "gamma.xlm");
-        client.create_auction(&alpha, &100, &10, &20);
-        client.create_auction(&beta, &100, &30, &40);
-        client.create_auction(&gamma, &100, &50, &60);
+        let asset = Address::generate(&env);
+        let treasury = Address::generate(&env);
+        client.create_auction(&alpha, &asset, &treasury, &100, &10, &20);
+        client.create_auction(&beta, &asset, &treasury, &100, &30, &40);
+        client.create_auction(&gamma, &asset, &treasury, &100, &50, &60);
 
         assert_eq!(client.auction_count(), 3);
 
@@ -152,16 +155,22 @@ mod tests {
     #[test]
     fn list_active_and_settled_filters_partition_by_state() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(AuctionContract, ());
         let client = AuctionContractClient::new(&env, &contract_id);
+
+        let (asset, token_admin, _) = setup_token(&env);
+        let treasury = Address::generate(&env);
+        let bidder = Address::generate(&env);
+        token_admin.mint(&bidder, &1000);
 
         let alpha = String::from_str(&env, "alpha.xlm");
         let beta = String::from_str(&env, "beta.xlm");
         let gamma = String::from_str(&env, "gamma.xlm");
 
-        client.create_auction(&alpha, &100, &10, &20);
-        client.create_auction(&beta, &100, &30, &40);
-        client.create_auction(&gamma, &100, &50, &60);
+        client.create_auction(&alpha, &asset, &treasury, &100, &10, &20);
+        client.create_auction(&beta, &asset, &treasury, &100, &30, &40);
+        client.create_auction(&gamma, &asset, &treasury, &100, &50, &60);
 
         // At t=15: only alpha is currently accepting bids. None settled.
         let active = client.list_active_auctions(&15, &0, &10);
@@ -171,7 +180,6 @@ mod tests {
 
         // Settle alpha at t=21. After settlement it must drop out of the
         // active set even at a time inside its original bidding window.
-        let bidder = Address::generate(&env);
         client.place_bid(&alpha, &bidder, &200, &12);
         client.settle(&alpha, &21);
 
@@ -197,6 +205,8 @@ mod tests {
         let env = Env::default();
         let contract_id = env.register(AuctionContract, ());
         let client = AuctionContractClient::new(&env, &contract_id);
+        let asset = Address::generate(&env);
+        let treasury = Address::generate(&env);
 
         // Create a handful of auctions; ask for a huge limit and verify the
         // contract caps it at MAX_PAGE_SIZE instead of returning the full
@@ -205,7 +215,7 @@ mod tests {
         for i in 0..5u32 {
             let s = format!("nam{i:02}.xlm");
             let name = String::from_str(&env, &s);
-            client.create_auction(&name, &100, &10, &20);
+            client.create_auction(&name, &asset, &treasury, &100, &10, &20);
         }
         let huge = client.list_auctions(&0, &u32::MAX);
         assert!(huge.len() <= crate::MAX_PAGE_SIZE);
@@ -236,7 +246,7 @@ mod tests {
         client.place_bid(&name, &charlie, &750, &14);
 
         let settlement = client.settle(&name, &21).unwrap();
-        assert_eq!(settlement.winner, Some(alice));
+        assert_eq!(settlement.winner, Some(alice.clone()));
         assert_eq!(settlement.clearing_price, 750); // Second highest bid
         assert!(settlement.sold);
 
@@ -260,15 +270,19 @@ mod tests {
     #[test]
     fn discovery_queries_filter_active_and_settled() {
         let env = Env::default();
+        env.mock_all_auths();
+        let (asset, token_admin, _) = setup_token(&env);
+        let treasury = Address::generate(&env);
         let alice = Address::generate(&env);
+        token_admin.mint(&alice, &1000);
         let client = AuctionContractClient::new(&env, &env.register(AuctionContract, ()));
 
         let a = String::from_str(&env, "alpha.xlm");
         let b = String::from_str(&env, "bravo.xlm");
         let c = String::from_str(&env, "charlie.xlm");
-        client.create_auction(&a, &100, &10, &20);
-        client.create_auction(&b, &100, &10, &20);
-        client.create_auction(&c, &100, &100, &200);
+        client.create_auction(&a, &asset, &treasury, &100, &10, &20);
+        client.create_auction(&b, &asset, &treasury, &100, &10, &20);
+        client.create_auction(&c, &asset, &treasury, &100, &100, &200);
 
         // Index records every created auction, in creation order.
         let names = client.auction_names();
@@ -290,5 +304,13 @@ mod tests {
         let settled = client.settled_auctions();
         assert_eq!(settled.len(), 1);
         assert_eq!(settled.get(0).unwrap().name, a);
+    }
+
+    #[test]
+    fn version_is_exposed() {
+        let env = Env::default();
+        let contract_id = env.register(AuctionContract, ());
+        let client = AuctionContractClient::new(&env, &contract_id);
+        assert_eq!(client.version(), 1);
     }
 }

@@ -64,7 +64,10 @@ fn subdomain_flow_covers_controller_delegation_transfer_and_resolution() {
 
     let resolved_before_transfer = resolver.resolve(&fqdn).unwrap();
     assert_eq!(resolved_before_transfer.owner, subdomain_owner);
-    assert_eq!(resolved_before_transfer.address, first_address);
+    assert_eq!(
+        resolver.get_stellar_address(&fqdn),
+        Some(first_address.clone())
+    );
     assert_eq!(resolver.reverse(&first_address), Some(fqdn.clone()));
 
     // Transfer subdomain ownership, then update resolver ownership explicitly.
@@ -98,7 +101,10 @@ fn subdomain_flow_covers_controller_delegation_transfer_and_resolution() {
 
     let resolved_after_transfer = resolver.resolve(&fqdn).unwrap();
     assert_eq!(resolved_after_transfer.owner, next_owner);
-    assert_eq!(resolved_after_transfer.address, second_address);
+    assert_eq!(
+        resolver.get_stellar_address(&fqdn),
+        Some(second_address.clone())
+    );
     assert_eq!(resolver.reverse(&second_address), Some(fqdn.clone()));
 
     // Test deletion of subdomain and its effect on resolver (none, resolver record persists)

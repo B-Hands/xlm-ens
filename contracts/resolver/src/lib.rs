@@ -130,11 +130,17 @@ pub struct RecordRemoved {
     pub former_address: Option<String>,
 }
 
+pub const CONTRACT_VERSION: u32 = 1;
+
 #[contract]
 pub struct ResolverContract;
 
 #[contractimpl]
 impl ResolverContract {
+    pub fn version(_env: Env) -> u32 {
+        CONTRACT_VERSION
+    }
+
     pub fn initialize(env: Env, registry: Address) -> Result<(), ResolverError> {
         if env.storage().instance().has(&DataKey::Registry) {
             return Err(ResolverError::Unauthorized);
