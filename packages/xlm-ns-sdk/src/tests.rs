@@ -12,15 +12,28 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
     use std::collections::HashMap;
 
+    // Valid 56-char Stellar contract IDs (C-prefix, all alphanumeric).
+    const REGISTRY_ID: &str = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    const REGISTRAR_ID: &str = "CBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+    const RESOLVER_ID: &str = "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";
+    const AUCTION_ID: &str = "CDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD";
+    const BRIDGE_ID: &str = "CEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE";
+    const SUBDOMAIN_ID: &str = "CFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF";
+    const NFT_ID: &str = "CGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG";
+    // Valid 56-char Stellar account addresses (G-prefix, all alphanumeric).
+    const OWNER_ADDR: &str = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    const NEW_OWNER_ADDR: &str = "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+    const LOOKUP_ADDR: &str = "GCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";
+
     fn client() -> XlmNsClient {
         XlmNsClient::builder("http://localhost")
             .network_passphrase("Test SDF Network ; September 2015")
-            .registry("CDAD...REGISTRY")
-            .subdomain("CDAD...SUBDOMAIN")
-            .bridge("CDAD...BRIDGE")
-            .auction("CDAD...AUCTION")
-            .registrar("CDAD...REGISTRAR")
-            .resolver("CDAD...RESOLVER")
+            .registry(REGISTRY_ID)
+            .subdomain(SUBDOMAIN_ID)
+            .bridge(BRIDGE_ID)
+            .auction(AUCTION_ID)
+            .registrar(REGISTRAR_ID)
+            .resolver(RESOLVER_ID)
             .build()
     }
 
@@ -64,7 +77,7 @@ mod tests {
         let receipt = client()
             .register(RegistrationRequest {
                 label: "beta".into(),
-                owner: "GDRA...OWNER".into(),
+                owner: OWNER_ADDR.into(),
                 duration_years: 1,
                 signer: Some("treasury".into()),
             })
@@ -127,7 +140,7 @@ mod tests {
         let submission = client()
             .transfer(TransferRequest {
                 name: "foo.xlm".into(),
-                new_owner: "GDRA...NEW".into(),
+                new_owner: NEW_OWNER_ADDR.into(),
                 signer: Some("alice".into()),
             })
             .await
@@ -146,9 +159,9 @@ mod tests {
 
     #[tokio::test]
     async fn owner_portfolio_returns_vec() {
-        let portfolio = client().get_owner_portfolio("GDRA...OWNER").await.unwrap();
+        let portfolio = client().get_owner_portfolio(OWNER_ADDR).await.unwrap();
         assert!(!portfolio.is_empty());
-        assert_eq!(portfolio[0].owner, "GDRA...OWNER");
+        assert_eq!(portfolio[0].owner, OWNER_ADDR);
     }
 
     #[tokio::test]
@@ -171,7 +184,7 @@ mod tests {
 
     #[tokio::test]
     async fn resolver_primary_name_returns_option() {
-        let name = client().get_primary_name("GDRA...ADDR").await.unwrap();
+        let name = client().get_primary_name(LOOKUP_ADDR).await.unwrap();
         assert_eq!(name, Some("primary.xlm".to_string()));
     }
 
@@ -195,7 +208,7 @@ mod tests {
         use std::time::Duration;
 
         let client = XlmNsClient::builder("http://localhost")
-            .registry("CDAD...REGISTRY")
+            .registry(REGISTRY_ID)
             .config(
                 ClientConfig::default()
                     .with_timeout(Duration::from_secs(2))
@@ -287,7 +300,7 @@ mod tests {
         let receipt = client()
             .register(RegistrationRequest {
                 label: "gamma".into(),
-                owner: "GDRA...OWNER".into(),
+                owner: OWNER_ADDR.into(),
                 duration_years: 2,
                 signer: Some("registrar".into()),
             })
@@ -295,7 +308,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(receipt.name, "gamma.xlm");
-        assert_eq!(receipt.owner, "GDRA...OWNER");
+        assert_eq!(receipt.owner, OWNER_ADDR);
         assert_eq!(receipt.duration_years, 2);
         assert_eq!(receipt.fee_paid, 500_000_000); // 250_000_000 × 2
         assert_eq!(receipt.submission.status, SubmissionStatus::Submitted);
@@ -475,7 +488,7 @@ mod tests {
     #[tokio::test]
     async fn quote_requires_registrar_contract() {
         let no_registrar = XlmNsClient::builder("http://localhost")
-            .registry("CDAD...REGISTRY")
+            .registry(REGISTRY_ID)
             .build();
 
         let result = no_registrar.quote_registration("alpha", 1).await;
@@ -490,7 +503,7 @@ mod tests {
     #[tokio::test]
     async fn register_requires_registrar_contract() {
         let no_registrar_client = XlmNsClient::builder("http://localhost")
-            .registry("CDAD...REGISTRY")
+            .registry(REGISTRY_ID)
             .build();
 
         let result = no_registrar_client
@@ -514,7 +527,7 @@ mod tests {
     #[tokio::test]
     async fn renew_requires_registrar_contract() {
         let no_registrar_client = XlmNsClient::builder("http://localhost")
-            .registry("CDAD...REGISTRY")
+            .registry(REGISTRY_ID)
             .build();
 
         let result = no_registrar_client
@@ -548,7 +561,7 @@ mod tests {
         let receipt = client()
             .register(RegistrationRequest {
                 label: "epsilon".into(),
-                owner: "GDRA...OWNER".into(),
+                owner: OWNER_ADDR.into(),
                 duration_years: 4,
                 signer: None,
             })
@@ -571,8 +584,167 @@ mod tests {
             )
             .await
             .unwrap();
-        
+
         assert_eq!(submission.status, SubmissionStatus::Submitted);
         assert_eq!(submission.signer.as_deref(), Some("deployer"));
+    }
+
+    // Issue #167 — simulation-first transaction assembly
+
+    #[tokio::test]
+    async fn simulate_register_surfaces_fee_estimate() {
+        // "alpha" = 5 chars → 250_000_000 stroops/year × 2 years
+        let result = client()
+            .simulate_register(&RegistrationRequest {
+                label: "alpha".into(),
+                owner: OWNER_ADDR.into(),
+                duration_years: 2,
+                signer: None,
+            })
+            .await
+            .unwrap();
+
+        assert!(result.success);
+        assert_eq!(result.fee_estimate, 500_000_000);
+        assert!(!result.auth_addresses.is_empty());
+        assert!(result.error.is_none());
+    }
+
+    #[tokio::test]
+    async fn simulate_renew_surfaces_fee_estimate() {
+        let result = client()
+            .simulate_renew(&RenewalRequest {
+                name: "test.xlm".into(),
+                additional_years: 3,
+                signer: None,
+            })
+            .await
+            .unwrap();
+
+        assert!(result.success);
+        assert!(result.fee_estimate > 0);
+        assert!(result.error.is_none());
+    }
+
+    #[tokio::test]
+    async fn simulate_register_requires_registrar_contract() {
+        let no_registrar = XlmNsClient::builder("http://localhost")
+            .registry(REGISTRY_ID)
+            .build();
+
+        let result = no_registrar
+            .simulate_register(&RegistrationRequest {
+                label: "alpha".into(),
+                owner: OWNER_ADDR.into(),
+                duration_years: 1,
+                signer: None,
+            })
+            .await;
+
+        match result {
+            Err(SdkError::InvalidRequest(msg)) => {
+                assert!(msg.contains("registrar"));
+            }
+            _ => panic!("Expected InvalidRequest when registrar contract ID is missing"),
+        }
+    }
+
+    #[tokio::test]
+    async fn simulate_renew_requires_registrar_contract() {
+        let no_registrar = XlmNsClient::builder("http://localhost")
+            .registry(REGISTRY_ID)
+            .build();
+
+        let result = no_registrar
+            .simulate_renew(&RenewalRequest {
+                name: "test.xlm".into(),
+                additional_years: 1,
+                signer: None,
+            })
+            .await;
+
+        match result {
+            Err(SdkError::InvalidRequest(msg)) => {
+                assert!(msg.contains("registrar"));
+            }
+            _ => panic!("Expected InvalidRequest when registrar contract ID is missing"),
+        }
+    }
+
+    // Issue #168 — SDK config expansion
+
+    #[test]
+    fn builder_from_preset_testnet_sets_rpc_and_passphrase() {
+        use crate::config::NetworkPreset;
+        let client = XlmNsClient::builder_from_preset(NetworkPreset::Testnet).build();
+        assert!(client.rpc_url.contains("testnet"));
+        assert_eq!(
+            client.network_passphrase.as_deref(),
+            Some("Test SDF Network ; September 2015")
+        );
+    }
+
+    #[test]
+    fn builder_from_preset_mainnet_sets_rpc_and_passphrase() {
+        use crate::config::NetworkPreset;
+        let client = XlmNsClient::builder_from_preset(NetworkPreset::Mainnet).build();
+        assert!(client.rpc_url.contains("soroban.stellar.org"));
+        assert_eq!(
+            client.network_passphrase.as_deref(),
+            Some("Public Global Stellar Network ; September 2015")
+        );
+    }
+
+    #[test]
+    fn missing_resolver_contract_id_is_none() {
+        let c = XlmNsClient::builder("http://localhost")
+            .registry("CDAD...REGISTRY")
+            .build();
+        assert!(c.resolver_contract_id.is_none());
+    }
+
+    #[test]
+    fn missing_nft_contract_id_is_none() {
+        let c = XlmNsClient::builder("http://localhost").build();
+        assert!(c.nft_contract_id.is_none());
+    }
+
+    #[test]
+    fn missing_bridge_contract_id_is_none() {
+        let c = XlmNsClient::builder("http://localhost").build();
+        assert!(c.bridge_contract_id.is_none());
+    }
+
+    #[test]
+    fn missing_auction_contract_id_is_none() {
+        let c = XlmNsClient::builder("http://localhost").build();
+        assert!(c.auction_contract_id.is_none());
+    }
+
+    #[test]
+    fn missing_subdomain_contract_id_is_none() {
+        let c = XlmNsClient::builder("http://localhost").build();
+        assert!(c.subdomain_contract_id.is_none());
+    }
+
+    #[test]
+    fn fully_specified_builder_sets_all_contract_ids() {
+        let c = XlmNsClient::builder("http://localhost")
+            .registry("CDAD...REGISTRY")
+            .registrar("CDAD...REGISTRAR")
+            .resolver("CDAD...RESOLVER")
+            .auction("CDAD...AUCTION")
+            .bridge("CDAD...BRIDGE")
+            .subdomain("CDAD...SUBDOMAIN")
+            .nft("CDAD...NFT")
+            .build();
+
+        assert!(c.registry_contract_id.is_some());
+        assert!(c.registrar_contract_id.is_some());
+        assert!(c.resolver_contract_id.is_some());
+        assert!(c.auction_contract_id.is_some());
+        assert!(c.bridge_contract_id.is_some());
+        assert!(c.subdomain_contract_id.is_some());
+        assert!(c.nft_contract_id.is_some());
     }
 }

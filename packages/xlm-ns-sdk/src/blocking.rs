@@ -246,8 +246,8 @@ mod tests {
         XlmNsBlockingClient::from_async(
             XlmNsClient::builder("http://localhost")
                 .network_passphrase("Test SDF Network ; September 2015")
-                .registry("CDAD...REGISTRY")
-                .registrar("CDAD...REGISTRAR")
+                .registry("CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+                .registrar("CBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
                 .build(),
         )
         .unwrap()

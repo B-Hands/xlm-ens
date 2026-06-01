@@ -71,7 +71,7 @@ mod auction_integration {
             .expect("settlement expected");
 
         // Bob should win and pay Charlie's bid amount (Vickrey second-price)
-        assert_eq!(settlement.winner, Some(bob));
+        assert_eq!(settlement.winner, Some(bob.clone()));
         assert_eq!(settlement.winning_bid, 800);
         assert_eq!(settlement.clearing_price, 600);
         assert!(settlement.sold);
@@ -149,7 +149,7 @@ mod auction_integration {
         let settlement = client
             .settle(&name, &time.now)
             .expect("settlement expected");
-        assert_eq!(settlement.winner, Some(alice));
+        assert_eq!(settlement.winner, Some(alice.clone()));
         assert_eq!(settlement.clearing_price, 500); // Clears at reserve
         assert!(settlement.sold);
 

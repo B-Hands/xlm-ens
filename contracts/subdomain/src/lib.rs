@@ -42,11 +42,17 @@ pub enum SubdomainError {
     Unauthorized = 5,
 }
 
+pub const CONTRACT_VERSION: u32 = 1;
+
 #[contract]
 pub struct SubdomainContract;
 
 #[contractimpl]
 impl SubdomainContract {
+    pub fn version(_env: Env) -> u32 {
+        CONTRACT_VERSION
+    }
+
     /// Registers a parent domain to enable subdomain creation.
     ///
     /// Safe Bootstrap Path: The parent owner must register the parent domain

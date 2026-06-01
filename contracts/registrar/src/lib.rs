@@ -13,6 +13,7 @@ use xlm_ns_common::soroban::{
     validate_registration_years_soroban,
 };
 use xlm_ns_common::time::grace_period_ends_at;
+pub use xlm_ns_common::GRACE_PERIOD_SECONDS;
 
 pub const ADMIN_RECOVERY_SUPPORTED: bool = false;
 
@@ -310,7 +311,7 @@ impl RegistrarContract {
             &Symbol::new(&env, "register"),
             (
                 name,
-                owner,
+                owner.clone(),
                 Option::<String>::None,
                 Option::<String>::None,
                 now_unix,
@@ -318,6 +319,11 @@ impl RegistrarContract {
                 record.grace_period_ends_at,
             )
                 .into_val(&env),
+        );
+
+        env.events().publish(
+            (symbol_short!("registrar"), symbol_short!("reg")),
+            (label, owner, payment_stroops, record.expires_at, record.grace_period_ends_at),
         );
 
         Ok(())
@@ -397,13 +403,18 @@ impl RegistrarContract {
             &registry,
             &Symbol::new(&env, "renew"),
             (
-                name,
-                caller,
+                name.clone(),
+                caller.clone(),
                 record.expires_at,
                 record.grace_period_ends_at,
                 now_unix,
             )
                 .into_val(&env),
+        );
+
+        env.events().publish(
+            (symbol_short!("registrar"), symbol_short!("renewed")),
+            (name, caller, payment_stroops, record.expires_at, record.grace_period_ends_at),
         );
 
         Ok(())

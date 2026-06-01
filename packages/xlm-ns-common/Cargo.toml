@@ -10,3 +10,6 @@ soroban = []
 
 [dependencies]
 soroban-sdk = "=26.0.0-rc.1"
+
+[dev-dependencies]
+proptest = "1"

@@ -172,6 +172,33 @@ impl Default for ClientConfig {
     }
 }
 
+/// Identifies a well-known Stellar network and provides the matching RPC URL
+/// and network passphrase. Pass to [`XlmNsClientBuilder::from_preset`] to
+/// avoid hard-coding these values in application code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NetworkPreset {
+    Testnet,
+    Mainnet,
+}
+
+impl NetworkPreset {
+    /// Soroban RPC endpoint for this network.
+    pub fn rpc_url(self) -> &'static str {
+        match self {
+            Self::Testnet => "https://soroban-testnet.stellar.org",
+            Self::Mainnet => "https://soroban.stellar.org",
+        }
+    }
+
+    /// Network passphrase required for transaction signing.
+    pub fn passphrase(self) -> &'static str {
+        match self {
+            Self::Testnet => "Test SDF Network ; September 2015",
+            Self::Mainnet => "Public Global Stellar Network ; September 2015",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -380,4 +380,12 @@ mod tests {
 
         assert_eq!(client.record(&fqdn).unwrap().owner, new_sub_owner);
     }
+
+    #[test]
+    fn version_is_exposed() {
+        let env = Env::default();
+        let contract_id = env.register(SubdomainContract, ());
+        let client = SubdomainContractClient::new(&env, &contract_id);
+        assert_eq!(client.version(), 1);
+    }
 }

@@ -28,11 +28,17 @@ pub enum NftError {
     Unauthorized = 3,
 }
 
+pub const CONTRACT_VERSION: u32 = 1;
+
 #[contract]
 pub struct NftContract;
 
 #[contractimpl]
 impl NftContract {
+    pub fn version(_env: Env) -> u32 {
+        CONTRACT_VERSION
+    }
+
     pub fn mint(
         env: Env,
         token_id: String,

@@ -441,3 +441,19 @@ pub struct BidRequest {
     pub amount: u64,
     pub signer: Option<String>,
 }
+
+/// Typed output from a pre-flight simulation of a write operation.
+///
+/// Call `simulate_register()` or `simulate_renew()` to inspect fees,
+/// auth requirements, and preflight errors before committing a transaction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SimulationResult {
+    /// Estimated fee in stroops that the operation will consume.
+    pub fee_estimate: u64,
+    /// Addresses whose authorization is required for the transaction.
+    pub auth_addresses: Vec<String>,
+    /// Human-readable error message if simulation detected a contract error.
+    pub error: Option<String>,
+    /// `true` when simulation found no errors and the transaction can be submitted.
+    pub success: bool,
+}

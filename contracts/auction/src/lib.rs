@@ -64,11 +64,17 @@ pub enum AuctionError {
     InvalidBid = 8,
 }
 
+pub const CONTRACT_VERSION: u32 = 1;
+
 #[contract]
 pub struct AuctionContract;
 
 #[contractimpl]
 impl AuctionContract {
+    pub fn version(_env: Env) -> u32 {
+        CONTRACT_VERSION
+    }
+
     pub fn create_auction(
         env: Env,
         name: String,

@@ -362,7 +362,7 @@ mod tests {
         assert_eq!(results.len(), 3);
         assert!(results.get(0).is_some()); // alice.xlm exists
         assert!(results.get(1).is_some()); // bob.xlm exists
-        assert_eq!(results.get(2), None); // charlie.xlm doesn't exist
+        assert_eq!(results.get(2), Some(None)); // charlie.xlm doesn't exist → index valid, value None
     }
 
     // Issue #321: Test batch reverse queries
@@ -889,5 +889,13 @@ mod tests {
 
             now += 10;
         }
+    }
+
+    #[test]
+    fn version_is_exposed() {
+        let env = Env::default();
+        let contract_id = env.register(ResolverContract, ());
+        let client = ResolverContractClient::new(&env, &contract_id);
+        assert_eq!(client.version(), 1);
     }
 }

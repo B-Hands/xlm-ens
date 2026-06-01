@@ -10,6 +10,8 @@ xlm-ns-registrar = { path = "../contracts/registrar" }
 xlm-ns-registry  = { path = "../contracts/registry" }
 xlm-ns-resolver  = { path = "../contracts/resolver" }
 xlm-ns-subdomain = { path = "../contracts/subdomain" }
+xlm-ns-auction   = { path = "../contracts/auction" }
+xlm-ns-bridge    = { path = "../contracts/bridge" }
 
 [[test]]
 name = "registrar_registry_test"

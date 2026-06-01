@@ -622,4 +622,12 @@ mod tests {
         // Key invariant: a no-op owner change must not create a duplicate entry.
         assert_owner_enumeration_consistent(&env, &client, &alice);
     }
+
+    #[test]
+    fn version_is_exposed() {
+        let env = Env::default();
+        let contract_id = env.register(NftContract, ());
+        let client = NftContractClient::new(&env, &contract_id);
+        assert_eq!(client.version(), 1);
+    }
 }
