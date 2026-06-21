@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use soroban_sdk::{testutils::{Address as _, Events as _}, Address, Env, String};
+    use soroban_sdk::{
+        testutils::{Address as _, Events as _},
+        Address, Env, String,
+    };
 
     use crate::{SubdomainContract, SubdomainContractClient};
 
@@ -29,7 +32,13 @@ mod tests {
         let parent = String::from_str(&env, "timmy.xlm");
 
         client.register_parent(&parent, &owner);
-        let fqdn = client.create(&String::from_str(&env, "pay"), &parent, &owner, &sub_owner, &100);
+        let fqdn = client.create(
+            &String::from_str(&env, "pay"),
+            &parent,
+            &owner,
+            &sub_owner,
+            &100,
+        );
 
         assert_eq!(fqdn, String::from_str(&env, "pay.timmy.xlm"));
         assert_eq!(env.events().all().events().len(), 1);
@@ -47,7 +56,13 @@ mod tests {
         let parent = String::from_str(&env, "timmy.xlm");
 
         client.register_parent(&parent, &owner);
-        let fqdn = client.create(&String::from_str(&env, "pay"), &parent, &owner, &sub_owner, &100);
+        let fqdn = client.create(
+            &String::from_str(&env, "pay"),
+            &parent,
+            &owner,
+            &sub_owner,
+            &100,
+        );
 
         client.transfer(&fqdn, &sub_owner, &new_owner);
 
@@ -66,7 +81,13 @@ mod tests {
         let parent = String::from_str(&env, "timmy.xlm");
 
         client.register_parent(&parent, &owner);
-        let fqdn = client.create(&String::from_str(&env, "pay"), &parent, &owner, &sub_owner, &100);
+        let fqdn = client.create(
+            &String::from_str(&env, "pay"),
+            &parent,
+            &owner,
+            &sub_owner,
+            &100,
+        );
 
         client.revoke(&fqdn, &sub_owner);
 

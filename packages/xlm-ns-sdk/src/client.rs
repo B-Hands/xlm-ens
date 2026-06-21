@@ -16,8 +16,8 @@ use std::hash::{Hash as StdHash, Hasher};
 use std::time::{SystemTime, UNIX_EPOCH};
 use stellar_rpc_client::Client;
 use stellar_xdr::curr::Hash as XdrHash;
-use xlm_ns_common::{GRACE_PERIOD_SECONDS, YEAR_SECONDS};
 use xlm_ns_common::validation::{validate_account_address, validate_contract_id};
+use xlm_ns_common::{GRACE_PERIOD_SECONDS, YEAR_SECONDS};
 
 const MOCK_REFERENCE_TIMESTAMP: u64 = 1_682_200_000;
 const SECONDS_PER_YEAR: u64 = 31_536_000;
@@ -133,9 +133,9 @@ impl XlmNsClient {
     }
 
     fn configured_network_passphrase(&self) -> Result<&str, SdkError> {
-        self.network_passphrase.as_deref().ok_or_else(|| {
-            SdkError::InvalidRequest("network passphrase not configured".into())
-        })
+        self.network_passphrase
+            .as_deref()
+            .ok_or_else(|| SdkError::InvalidRequest("network passphrase not configured".into()))
     }
 
     async fn verify_write_network(&self) -> Result<(), SdkError> {
@@ -157,19 +157,17 @@ impl XlmNsClient {
         contract_id: &'a Option<String>,
         field_name: &'static str,
     ) -> Result<&'a str, SdkError> {
-        let contract_id = contract_id.as_deref().ok_or_else(|| {
-            SdkError::InvalidRequest(format!("{field_name} not configured"))
-        })?;
-        validate_contract_id(contract_id).map_err(|err| {
-            SdkError::InvalidRequest(format!("{field_name} is invalid: {err}"))
-        })?;
+        let contract_id = contract_id
+            .as_deref()
+            .ok_or_else(|| SdkError::InvalidRequest(format!("{field_name} not configured")))?;
+        validate_contract_id(contract_id)
+            .map_err(|err| SdkError::InvalidRequest(format!("{field_name} is invalid: {err}")))?;
         Ok(contract_id)
     }
 
     fn validate_account(value: &str, field_name: &'static str) -> Result<(), SdkError> {
-        validate_account_address(value).map_err(|err| {
-            SdkError::InvalidRequest(format!("{field_name} is invalid: {err}"))
-        })
+        validate_account_address(value)
+            .map_err(|err| SdkError::InvalidRequest(format!("{field_name} is invalid: {err}")))
     }
 
     fn parse_submission_hash(hash: &str) -> Option<XdrHash> {
@@ -240,10 +238,8 @@ impl XlmNsClient {
     pub async fn resolve(&self, name: &str) -> Result<ResolutionResult, SdkError> {
         let rpc =
             Client::new(&self.rpc_url).map_err(|e| SdkError::InvalidRequest(e.to_string()))?;
-        let registry_id = Self::require_contract_id(
-            &self.registry_contract_id,
-            "registry contract ID",
-        )?;
+        let registry_id =
+            Self::require_contract_id(&self.registry_contract_id, "registry contract ID")?;
 
         let entry = self.query_registry(&rpc, registry_id, name, 0).await?;
 
@@ -255,10 +251,7 @@ impl XlmNsClient {
         };
 
         if let Some(resolver_id) = entry.resolver.clone() {
-            if let Some(record) = self
-                .query_resolver(&rpc, &resolver_id, name, 0)
-                .await?
-            {
+            if let Some(record) = self.query_resolver(&rpc, &resolver_id, name, 0).await? {
                 result.address = Some(record.address);
             }
         }
@@ -269,10 +262,8 @@ impl XlmNsClient {
     pub async fn get_registry_metadata(&self, name: &str) -> Result<NameRecord, SdkError> {
         let rpc =
             Client::new(&self.rpc_url).map_err(|e| SdkError::InvalidRequest(e.to_string()))?;
-        let registry_id = Self::require_contract_id(
-            &self.registry_contract_id,
-            "registry contract ID",
-        )?;
+        let registry_id =
+            Self::require_contract_id(&self.registry_contract_id, "registry contract ID")?;
 
         let entry = self.query_registry(&rpc, registry_id, name, 0).await?;
 
@@ -445,7 +436,8 @@ impl XlmNsClient {
             network_passphrase: self.network_passphrase.clone(),
             signer: update.signer,
         };
-        self.maybe_hydrate_submission(submission, "set_text_record").await
+        self.maybe_hydrate_submission(submission, "set_text_record")
+            .await
     }
 
     pub async fn set_text_records(
@@ -465,7 +457,8 @@ impl XlmNsClient {
             signer: update.signer,
         };
 
-        self.maybe_hydrate_submission(submission, "set_text_records").await
+        self.maybe_hydrate_submission(submission, "set_text_records")
+            .await
     }
 
     pub async fn quote_registration(
@@ -479,11 +472,9 @@ impl XlmNsClient {
                 "duration_years must be greater than zero".into(),
             ));
         }
-        let registrar_id = Self::require_contract_id(
-            &self.registrar_contract_id,
-            "registrar contract ID",
-        )?
-        .to_string();
+        let registrar_id =
+            Self::require_contract_id(&self.registrar_contract_id, "registrar contract ID")?
+                .to_string();
 
         let years = u64::from(duration_years);
         let annual_fee = price_for_label_length(label.trim().len());
@@ -531,10 +522,8 @@ impl XlmNsClient {
         }
 
         // Validate registrar contract is configured
-        let _registrar_id = Self::require_contract_id(
-            &self.registrar_contract_id,
-            "registrar contract ID",
-        )?;
+        let _registrar_id =
+            Self::require_contract_id(&self.registrar_contract_id, "registrar contract ID")?;
 
         self.verify_write_network().await?;
 
@@ -555,7 +544,9 @@ impl XlmNsClient {
             signer: request.signer.clone(),
         };
 
-        let submission = self.maybe_hydrate_submission(submission, "register").await?;
+        let submission = self
+            .maybe_hydrate_submission(submission, "register")
+            .await?;
 
         Ok(RegistrationReceipt {
             name: format!("{}.xlm", request.label),
@@ -579,10 +570,8 @@ impl XlmNsClient {
         }
 
         // Validate registrar contract is configured.
-        let _registrar_id = Self::require_contract_id(
-            &self.registrar_contract_id,
-            "registrar contract ID",
-        )?;
+        let _registrar_id =
+            Self::require_contract_id(&self.registrar_contract_id, "registrar contract ID")?;
 
         self.verify_write_network().await?;
 
@@ -663,7 +652,8 @@ impl XlmNsClient {
                 dry_run,
             )
             .await?;
-        self.maybe_hydrate_submission(submission, "register_parent").await
+        self.maybe_hydrate_submission(submission, "register_parent")
+            .await
     }
 
     pub async fn add_controller(
@@ -685,7 +675,8 @@ impl XlmNsClient {
                 dry_run,
             )
             .await?;
-        self.maybe_hydrate_submission(submission, "add_controller").await
+        self.maybe_hydrate_submission(submission, "add_controller")
+            .await
     }
 
     pub async fn create_subdomain(
@@ -710,7 +701,8 @@ impl XlmNsClient {
                 dry_run,
             )
             .await?;
-        self.maybe_hydrate_submission(submission, "create_subdomain").await
+        self.maybe_hydrate_submission(submission, "create_subdomain")
+            .await
     }
 
     pub async fn transfer_subdomain(
@@ -732,7 +724,8 @@ impl XlmNsClient {
                 dry_run,
             )
             .await?;
-        self.maybe_hydrate_submission(submission, "transfer_subdomain").await
+        self.maybe_hydrate_submission(submission, "transfer_subdomain")
+            .await
     }
 
     pub async fn get_subdomains(&self, parent: &str) -> Result<Vec<Subdomain>, SdkError> {
@@ -833,7 +826,9 @@ impl XlmNsClient {
         dry_run: bool,
     ) -> Result<TransactionSubmission, SdkError> {
         if token_id.trim().is_empty() {
-            return Err(SdkError::InvalidRequest("token_id must not be empty".into()));
+            return Err(SdkError::InvalidRequest(
+                "token_id must not be empty".into(),
+            ));
         }
         Self::validate_account(owner, "owner")?;
         let submission = self
@@ -855,7 +850,9 @@ impl XlmNsClient {
         dry_run: bool,
     ) -> Result<TransactionSubmission, SdkError> {
         if token_id.trim().is_empty() {
-            return Err(SdkError::InvalidRequest("token_id must not be empty".into()));
+            return Err(SdkError::InvalidRequest(
+                "token_id must not be empty".into(),
+            ));
         }
         Self::validate_account(operator, "operator")?;
         let submission = self
@@ -867,7 +864,8 @@ impl XlmNsClient {
                 dry_run,
             )
             .await?;
-        self.maybe_hydrate_submission(submission, "approve_nft").await
+        self.maybe_hydrate_submission(submission, "approve_nft")
+            .await
     }
 
     pub async fn transfer_nft(
@@ -877,7 +875,9 @@ impl XlmNsClient {
         dry_run: bool,
     ) -> Result<TransactionSubmission, SdkError> {
         if token_id.trim().is_empty() {
-            return Err(SdkError::InvalidRequest("token_id must not be empty".into()));
+            return Err(SdkError::InvalidRequest(
+                "token_id must not be empty".into(),
+            ));
         }
         Self::validate_account(new_owner, "new_owner")?;
         let submission = self
@@ -889,7 +889,8 @@ impl XlmNsClient {
                 dry_run,
             )
             .await?;
-        self.maybe_hydrate_submission(submission, "transfer_nft").await
+        self.maybe_hydrate_submission(submission, "transfer_nft")
+            .await
     }
 
     pub async fn get_nft(&self, token_id: &str) -> Result<NftRecord, SdkError> {
@@ -1071,19 +1072,15 @@ impl XlmNsClient {
     }
 
     pub async fn get_treasury_balance(&self) -> Result<u64, SdkError> {
-        let _registrar_id = Self::require_contract_id(
-            &self.registrar_contract_id,
-            "registrar contract ID",
-        )?;
+        let _registrar_id =
+            Self::require_contract_id(&self.registrar_contract_id, "registrar contract ID")?;
 
         Ok(0)
     }
 
     pub async fn get_fee_metrics(&self) -> Result<RegistrarMetrics, SdkError> {
-        let _registrar_id = Self::require_contract_id(
-            &self.registrar_contract_id,
-            "registrar contract ID",
-        )?;
+        let _registrar_id =
+            Self::require_contract_id(&self.registrar_contract_id, "registrar contract ID")?;
 
         Ok(RegistrarMetrics {
             treasury_balance: 0,
@@ -1130,10 +1127,8 @@ impl XlmNsClient {
                 "duration_years must be greater than zero".into(),
             ));
         }
-        let _registrar_id = Self::require_contract_id(
-            &self.registrar_contract_id,
-            "registrar contract ID",
-        )?;
+        let _registrar_id =
+            Self::require_contract_id(&self.registrar_contract_id, "registrar contract ID")?;
         let quote = self
             .quote_registration(&request.label, request.duration_years)
             .await?;
@@ -1159,10 +1154,8 @@ impl XlmNsClient {
                 "additional_years must be greater than zero".into(),
             ));
         }
-        let _registrar_id = Self::require_contract_id(
-            &self.registrar_contract_id,
-            "registrar contract ID",
-        )?;
+        let _registrar_id =
+            Self::require_contract_id(&self.registrar_contract_id, "registrar contract ID")?;
         let years = u64::from(request.additional_years);
         let fee_estimate = BASE_FEE_PER_YEAR
             .saturating_mul(years)
@@ -1191,9 +1184,8 @@ impl XlmNsClient {
     }
 
     async fn rpc_context(&self) -> Result<(Client, u32, String), SdkError> {
-        let rpc = Client::new(&self.rpc_url).map_err(|e| {
-            SdkError::InvalidRequest(format!("failed to create RPC client: {e}"))
-        })?;
+        let rpc = Client::new(&self.rpc_url)
+            .map_err(|e| SdkError::InvalidRequest(format!("failed to create RPC client: {e}")))?;
         let passphrase = self.network_passphrase.clone().unwrap_or_default();
         Ok((rpc, 0u32, passphrase))
     }

@@ -58,36 +58,32 @@ pub async fn run_portfolio(
     );
 
     match client.list_registrations_by_owner(owner) {
-        Ok(names) => {
-            match output {
-                OutputFormat::Human => {
-                    let mut lines = vec![format!("Portfolio for {owner}:")];
-                    if names.is_empty() {
-                        lines.push("  [no names found]".to_string());
-                    } else {
-                        for entry in &names {
-                            let expires = entry
-                                .expires_at
-                                .map(|value| value.to_string())
-                                .unwrap_or_else(|| "unknown".to_string());
-                            lines.push(format!("  - {} (expires_at: {expires})", entry.name));
-                        }
+        Ok(names) => match output {
+            OutputFormat::Human => {
+                let mut lines = vec![format!("Portfolio for {owner}:")];
+                if names.is_empty() {
+                    lines.push("  [no names found]".to_string());
+                } else {
+                    for entry in &names {
+                        let expires = entry
+                            .expires_at
+                            .map(|value| value.to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        lines.push(format!("  - {} (expires_at: {expires})", entry.name));
                     }
+                }
 
-                    println!("{}", lines.join("\n"));
-                }
-                OutputFormat::Json => {
-                    let records = build_portfolio_records(&client, &names, now_unix).await?;
-                    export::write_json(&records, &mut std::io::stdout())
-                        .map_err(anyhow::Error::msg)?;
-                }
-                OutputFormat::Csv => {
-                    let records = build_portfolio_records(&client, &names, now_unix).await?;
-                    export::write_csv(&records, &mut std::io::stdout())
-                        .map_err(anyhow::Error::msg)?;
-                }
+                println!("{}", lines.join("\n"));
             }
-        }
+            OutputFormat::Json => {
+                let records = build_portfolio_records(&client, &names, now_unix).await?;
+                export::write_json(&records, &mut std::io::stdout()).map_err(anyhow::Error::msg)?;
+            }
+            OutputFormat::Csv => {
+                let records = build_portfolio_records(&client, &names, now_unix).await?;
+                export::write_csv(&records, &mut std::io::stdout()).map_err(anyhow::Error::msg)?;
+            }
+        },
         Err(err) => {
             let message = format!("ERROR: Failed to fetch portfolio for {owner}: {err}");
             emit_error(

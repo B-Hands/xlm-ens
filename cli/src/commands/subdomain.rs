@@ -20,10 +20,13 @@ pub async fn run_register_parent(
     );
 
     let submission = client
-        .register_parent(RegisterParentRequest {
-            parent: parent.into(),
-            owner: owner.into(),
-        }, false)
+        .register_parent(
+            RegisterParentRequest {
+                parent: parent.into(),
+                owner: owner.into(),
+            },
+            false,
+        )
         .await
         .context("Failed to register parent domain")?;
 
@@ -47,10 +50,13 @@ pub async fn run_add_controller(
     );
 
     let submission = client
-        .add_controller(AddControllerRequest {
-            parent: parent.into(),
-            controller: controller.into(),
-        }, false)
+        .add_controller(
+            AddControllerRequest {
+                parent: parent.into(),
+                controller: controller.into(),
+            },
+            false,
+        )
         .await
         .context("Failed to add controller")?;
 
@@ -75,11 +81,14 @@ pub async fn run_create_subdomain(
     );
 
     let submission = client
-        .create_subdomain(CreateSubdomainRequest {
-            label: label.into(),
-            parent: parent.into(),
-            owner: owner.into(),
-        }, false)
+        .create_subdomain(
+            CreateSubdomainRequest {
+                label: label.into(),
+                parent: parent.into(),
+                owner: owner.into(),
+            },
+            false,
+        )
         .await
         .context("Failed to create subdomain")?;
 
@@ -104,10 +113,13 @@ pub async fn run_transfer_subdomain(
     );
 
     let submission = client
-        .transfer_subdomain(TransferSubdomainRequest {
-            fqdn: fqdn.into(),
-            new_owner: new_owner.into(),
-        }, false)
+        .transfer_subdomain(
+            TransferSubdomainRequest {
+                fqdn: fqdn.into(),
+                new_owner: new_owner.into(),
+            },
+            false,
+        )
         .await
         .context("Failed to transfer subdomain")?;
 

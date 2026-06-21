@@ -219,7 +219,12 @@ fn remove_owner_token(env: &Env, owner: &Address, token_id: &String) {
     env.storage().persistent().set(&key, &filtered);
 }
 
-fn reindex_owner_token(env: &Env, previous_owner: &Address, new_owner: &Address, token_id: &String) {
+fn reindex_owner_token(
+    env: &Env,
+    previous_owner: &Address,
+    new_owner: &Address,
+    token_id: &String,
+) {
     if previous_owner == new_owner {
         return;
     }

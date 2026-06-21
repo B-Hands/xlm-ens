@@ -223,7 +223,12 @@ impl ResolverContract {
         // #141: Emit forward + reverse events
         env.events().publish(
             (symbol_short!("resolver"), symbol_short!("fwd_set")),
-            (name.clone(), address.clone(), String::from_str(&env, DEFAULT_CHAIN), now_unix),
+            (
+                name.clone(),
+                address.clone(),
+                String::from_str(&env, DEFAULT_CHAIN),
+                now_unix,
+            ),
         );
         env.events().publish(
             (symbol_short!("resolver"), symbol_short!("rev_set")),
@@ -360,10 +365,7 @@ impl ResolverContract {
         assert_owner(&env, &name, &record, &caller, 0)?;
 
         // Clean up reverse mappings for all chains, particularly Stellar
-        let former_address =
-            record
-                .addresses
-                .get(String::from_str(&env, DEFAULT_CHAIN));
+        let former_address = record.addresses.get(String::from_str(&env, DEFAULT_CHAIN));
         if let Some(ref stellar_addr) = former_address {
             env.storage()
                 .persistent()
@@ -386,7 +388,12 @@ impl ResolverContract {
         Ok(())
     }
 
-    pub fn update_owner(env: Env, name: String, caller: Address, new_owner: Address) -> Result<(), ResolverError> {
+    pub fn update_owner(
+        env: Env,
+        name: String,
+        caller: Address,
+        new_owner: Address,
+    ) -> Result<(), ResolverError> {
         let record = get_record(&env, &name)?;
         assert_owner(&env, &name, &record, &caller, 0)?;
         let mut record = record;
@@ -439,7 +446,11 @@ impl ResolverContract {
     pub fn batch_resolve(env: Env, names: Vec<String>) -> Vec<Option<ResolutionRecord>> {
         let mut out = Vec::new(&env);
         for name in names.iter() {
-            out.push_back(env.storage().persistent().get(&DataKey::Forward(name.clone())));
+            out.push_back(
+                env.storage()
+                    .persistent()
+                    .get(&DataKey::Forward(name.clone())),
+            );
         }
         out
     }

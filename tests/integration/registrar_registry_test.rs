@@ -220,9 +220,11 @@ mod registrar_registry_integration {
         registrar.register(&label, &owner, &1, &quote.fee_stroops, &start);
 
         // Midpoint of the grace window: expiry < now < grace_end.
-        let in_grace =
-            quote.expiry_unix + (quote.grace_period_ends_at - quote.expiry_unix) / 2;
-        assert_eq!(registry.name_state(&name, &in_grace), NameState::GracePeriod);
+        let in_grace = quote.expiry_unix + (quote.grace_period_ends_at - quote.expiry_unix) / 2;
+        assert_eq!(
+            registry.name_state(&name, &in_grace),
+            NameState::GracePeriod
+        );
 
         registrar.renew(&name, &owner, &1, &quote.fee_stroops, &in_grace);
 
@@ -257,6 +259,9 @@ mod registrar_registry_integration {
         assert_eq!(record.expires_at, quote.expiry_unix);
 
         // Registry reports the name as claimable, untouched by the failed renewal.
-        assert_eq!(registry.name_state(&name, &after_grace), NameState::Claimable);
+        assert_eq!(
+            registry.name_state(&name, &after_grace),
+            NameState::Claimable
+        );
     }
 }

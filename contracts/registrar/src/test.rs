@@ -1,12 +1,15 @@
 #[cfg(test)]
 mod tests {
-    use soroban_sdk::{testutils::{Address as _, Events as _}, Address, Env, String};
+    use soroban_sdk::{
+        testutils::{Address as _, Events as _},
+        Address, Env, String,
+    };
 
     use crate::expiry::{expiry_from_now, within_grace_period};
     use crate::pricing::price_for_label_length;
     use crate::{
-        can_renew, RegistrarContract, RegistrarContractClient, RegistrarError,
-        RegistrationStatus, GRACE_PERIOD_SECONDS,
+        can_renew, RegistrarContract, RegistrarContractClient, RegistrarError, RegistrationStatus,
+        GRACE_PERIOD_SECONDS,
     };
     use xlm_ns_registry::RegistryContract;
 
@@ -323,7 +326,10 @@ mod tests {
         client.initialize(&registry_id);
         let label = String::from_str(&env, "admin");
         client.reserve_label(&label);
-        assert_eq!(client.registration_status(&label, &1000), RegistrationStatus::Reserved);
+        assert_eq!(
+            client.registration_status(&label, &1000),
+            RegistrationStatus::Reserved
+        );
     }
 
     #[test]

@@ -1,14 +1,24 @@
 #[cfg(test)] ///////
 mod tests {
-    use soroban_sdk::{testutils::Address as _, Address, Env, String};
     use soroban_sdk::token;
+    use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
     use crate::{AuctionContract, AuctionContractClient};
 
-    fn setup_token(env: &Env) -> (Address, token::StellarAssetClient<'static>, token::Client<'static>) {
+    fn setup_token(
+        env: &Env,
+    ) -> (
+        Address,
+        token::StellarAssetClient<'static>,
+        token::Client<'static>,
+    ) {
         let admin = Address::generate(env);
         let contract = env.register_stellar_asset_contract(admin.clone());
-        (contract.clone(), token::StellarAssetClient::new(env, &contract), token::Client::new(env, &contract))
+        (
+            contract.clone(),
+            token::StellarAssetClient::new(env, &contract),
+            token::Client::new(env, &contract),
+        )
     }
 
     #[test]

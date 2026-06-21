@@ -26,9 +26,8 @@ fn write_template(path: &Path, network: Network, force: bool) -> anyhow::Result<
 
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).map_err(|err| {
-                anyhow::anyhow!("failed to create {}: {err}", parent.display())
-            })?;
+            fs::create_dir_all(parent)
+                .map_err(|err| anyhow::anyhow!("failed to create {}: {err}", parent.display()))?;
         }
     }
 
@@ -51,17 +50,15 @@ fn open_editor(path: &Path) -> anyhow::Result<()> {
         .map_err(|err| anyhow::anyhow!("failed to launch editor '{editor}': {err}"))?;
 
     if !status.success() {
-        return Err(anyhow::anyhow!("editor '{editor}' exited with status {status}"));
+        return Err(anyhow::anyhow!(
+            "editor '{editor}' exited with status {status}"
+        ));
     }
 
     Ok(())
 }
 
-pub async fn run_init(
-    path: Option<PathBuf>,
-    network: &str,
-    force: bool,
-) -> anyhow::Result<()> {
+pub async fn run_init(path: Option<PathBuf>, network: &str, force: bool) -> anyhow::Result<()> {
     let network = parse_network(network)?;
     let path = resolve_path(path);
     write_template(&path, network, force)?;
@@ -87,7 +84,9 @@ pub async fn run_validate(
     output: OutputFormat,
 ) -> anyhow::Result<()> {
     let network = parse_network(network)?;
-    let resolved_path = path.clone().unwrap_or_else(|| PathBuf::from(".xlm-ns.toml"));
+    let resolved_path = path
+        .clone()
+        .unwrap_or_else(|| PathBuf::from(".xlm-ns.toml"));
     let config = load_config(
         network,
         ResolveOptions {

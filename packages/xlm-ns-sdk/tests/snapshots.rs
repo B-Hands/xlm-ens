@@ -1,5 +1,5 @@
-use xlm_ns_sdk::XlmNsClient;
 use xlm_ns_sdk::types::*;
+use xlm_ns_sdk::XlmNsClient;
 
 #[tokio::test]
 async fn test_register_snapshot() {
@@ -11,7 +11,8 @@ async fn test_register_snapshot() {
         Some("SUBDOMAIN111".to_string()),
         Some("BRIDGE111".to_string()),
         Some("AUCTION111".to_string()),
-    ).with_registrar("REGISTRAR111");
+    )
+    .with_registrar("REGISTRAR111");
 
     let req = RegistrationRequest {
         label: "alice".to_string(),
@@ -19,7 +20,7 @@ async fn test_register_snapshot() {
         duration_years: 1,
         signer: None,
     };
-    
+
     // Simulate/snapshot coverage
     // In a real environment, we would capture the XDR here with insta
     assert_eq!(req.label, "alice");

@@ -189,7 +189,12 @@ impl fmt::Display for ConfigError {
             }
             Self::Validation { path, messages } => {
                 if let Some(path) = path {
-                    write!(f, "invalid config {}: {}", path.display(), messages.join("; "))
+                    write!(
+                        f,
+                        "invalid config {}: {}",
+                        path.display(),
+                        messages.join("; ")
+                    )
                 } else {
                     write!(f, "invalid config: {}", messages.join("; "))
                 }
@@ -335,7 +340,6 @@ nft_contract_id = "C............................................................
         network = network.as_str(),
     )
 }
-
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]

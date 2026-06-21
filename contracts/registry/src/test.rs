@@ -84,7 +84,10 @@ mod tests {
         );
 
         // Active up to and including the expiry instant.
-        assert_eq!(client.name_state(&name, &time.future(500)), NameState::Active);
+        assert_eq!(
+            client.name_state(&name, &time.future(500)),
+            NameState::Active
+        );
         assert_eq!(client.name_state(&name, &expires_at), NameState::Active);
         // Grace period between expiry and the grace-period end (inclusive).
         assert_eq!(
@@ -481,7 +484,11 @@ mod tests {
         );
 
         let stale = client.audit_owner_index(&owner);
-        assert_eq!(stale.len(), 0, "expected no stale entries after normal registration");
+        assert_eq!(
+            stale.len(),
+            0,
+            "expected no stale entries after normal registration"
+        );
     }
 
     #[test]
@@ -529,7 +536,11 @@ mod tests {
 
         let stranger = Address::generate(&env);
         let stale = client.audit_owner_index(&stranger);
-        assert_eq!(stale.len(), 0, "unknown owner should have an empty audit result");
+        assert_eq!(
+            stale.len(),
+            0,
+            "unknown owner should have an empty audit result"
+        );
     }
 
     #[test]

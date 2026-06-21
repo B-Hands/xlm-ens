@@ -212,7 +212,10 @@ mod tests {
         assert_eq!(config.retry.max_backoff, DEFAULT_MAX_BACKOFF);
         assert!(config.user_agent.starts_with("xlm-ns-sdk/"));
         assert!(config.poll_final_status);
-        assert_eq!(config.transaction_poll_timeout, DEFAULT_TRANSACTION_POLL_TIMEOUT);
+        assert_eq!(
+            config.transaction_poll_timeout,
+            DEFAULT_TRANSACTION_POLL_TIMEOUT
+        );
     }
 
     #[test]

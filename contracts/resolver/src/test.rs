@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use soroban_sdk::{testutils::Address as _, Address, Env, String, Vec};
-    use xlm_ns_common::{MAX_TEXT_RECORD_VALUE_LENGTH, MAX_TEXT_RECORDS};
+    use xlm_ns_common::{MAX_TEXT_RECORDS, MAX_TEXT_RECORD_VALUE_LENGTH};
 
     use crate::{BatchOp, ResolverContract, ResolverContractClient};
 
@@ -28,9 +28,7 @@ mod tests {
         let record = client.resolve(&name).unwrap();
         assert_eq!(record.owner, owner);
         assert_eq!(
-            record
-                .addresses
-                .get(String::from_str(&env, "stellar")),
+            record.addresses.get(String::from_str(&env, "stellar")),
             Some(address.clone())
         );
         assert_eq!(
@@ -237,9 +235,7 @@ mod tests {
 
         let record = client.resolve(&name).unwrap();
         assert_eq!(
-            record
-                .addresses
-                .get(String::from_str(&env, "stellar")),
+            record.addresses.get(String::from_str(&env, "stellar")),
             Some(new_address)
         );
         assert_eq!(record.text_records.len(), 1);
@@ -290,7 +286,10 @@ mod tests {
             );
         }));
 
-        assert!(result.is_err(), "text record value exceeding limit should fail");
+        assert!(
+            result.is_err(),
+            "text record value exceeding limit should fail"
+        );
     }
 
     // Issue #317: Test multi-chain address records
@@ -319,15 +318,11 @@ mod tests {
 
         let record = client.resolve(&name).unwrap();
         assert_eq!(
-            record
-                .addresses
-                .get(String::from_str(&env, "stellar")),
+            record.addresses.get(String::from_str(&env, "stellar")),
             Some(stellar_address)
         );
         assert_eq!(
-            record
-                .addresses
-                .get(String::from_str(&env, "ethereum")),
+            record.addresses.get(String::from_str(&env, "ethereum")),
             Some(ethereum_address.clone()) // clone to avoid move
         );
 
@@ -383,7 +378,8 @@ mod tests {
         client.set_record(&name2, &owner, &address2, &101);
 
         // Batch reverse lookup with one missing address
-        let addresses = Vec::from_array(&env, [address1.clone(), address2.clone(), address3.clone()]);
+        let addresses =
+            Vec::from_array(&env, [address1.clone(), address2.clone(), address3.clone()]);
         let results = client.batch_reverse(&addresses);
 
         assert_eq!(results.len(), 3);
@@ -403,11 +399,29 @@ mod tests {
         let name = String::from_str(&env, "alice.xlm");
         client.set_record(&name, &owner, &String::from_str(&env, "GABC"), &100);
         // plain lowercase
-        client.set_text_record(&name, &owner, &String::from_str(&env, "url"), &String::from_str(&env, "https://x"), &101);
+        client.set_text_record(
+            &name,
+            &owner,
+            &String::from_str(&env, "url"),
+            &String::from_str(&env, "https://x"),
+            &101,
+        );
         // namespaced with dot
-        client.set_text_record(&name, &owner, &String::from_str(&env, "com.twitter"), &String::from_str(&env, "@alice"), &102);
+        client.set_text_record(
+            &name,
+            &owner,
+            &String::from_str(&env, "com.twitter"),
+            &String::from_str(&env, "@alice"),
+            &102,
+        );
         // dash and underscore
-        client.set_text_record(&name, &owner, &String::from_str(&env, "org.did_key-1"), &String::from_str(&env, "did:x"), &103);
+        client.set_text_record(
+            &name,
+            &owner,
+            &String::from_str(&env, "org.did_key-1"),
+            &String::from_str(&env, "did:x"),
+            &103,
+        );
         assert_eq!(client.resolve(&name).unwrap().text_records.len(), 3);
     }
 
@@ -420,7 +434,13 @@ mod tests {
         let name = String::from_str(&env, "alice.xlm");
         client.set_record(&name, &owner, &String::from_str(&env, "GABC"), &100);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            client.set_text_record(&name, &owner, &String::from_str(&env, "Twitter"), &String::from_str(&env, "@alice"), &101);
+            client.set_text_record(
+                &name,
+                &owner,
+                &String::from_str(&env, "Twitter"),
+                &String::from_str(&env, "@alice"),
+                &101,
+            );
         }));
         assert!(result.is_err(), "uppercase key must be rejected");
     }
@@ -434,7 +454,13 @@ mod tests {
         let name = String::from_str(&env, "alice.xlm");
         client.set_record(&name, &owner, &String::from_str(&env, "GABC"), &100);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            client.set_text_record(&name, &owner, &String::from_str(&env, ""), &String::from_str(&env, "val"), &101);
+            client.set_text_record(
+                &name,
+                &owner,
+                &String::from_str(&env, ""),
+                &String::from_str(&env, "val"),
+                &101,
+            );
         }));
         assert!(result.is_err(), "empty key must be rejected");
     }
@@ -449,7 +475,13 @@ mod tests {
         client.set_record(&name, &owner, &String::from_str(&env, "GABC"), &100);
         let long_key = "a".repeat(65);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            client.set_text_record(&name, &owner, &String::from_str(&env, &long_key), &String::from_str(&env, "val"), &101);
+            client.set_text_record(
+                &name,
+                &owner,
+                &String::from_str(&env, &long_key),
+                &String::from_str(&env, "val"),
+                &101,
+            );
         }));
         assert!(result.is_err(), "65-byte key must be rejected");
     }
@@ -463,7 +495,13 @@ mod tests {
         let name = String::from_str(&env, "alice.xlm");
         client.set_record(&name, &owner, &String::from_str(&env, "GABC"), &100);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            client.set_text_record(&name, &owner, &String::from_str(&env, "bad key"), &String::from_str(&env, "val"), &101);
+            client.set_text_record(
+                &name,
+                &owner,
+                &String::from_str(&env, "bad key"),
+                &String::from_str(&env, "val"),
+                &101,
+            );
         }));
         assert!(result.is_err(), "key with space must be rejected");
     }
@@ -633,20 +671,14 @@ mod tests {
         let name = String::from_str(&env, "alice.xlm");
         client.set_record(&name, &owner, &String::from_str(&env, "GAAA"), &100);
 
-        let ops = Vec::from_array(
-            &env,
-            [BatchOp::SetAddress(String::from_str(&env, "GBBB"))],
-        );
+        let ops = Vec::from_array(&env, [BatchOp::SetAddress(String::from_str(&env, "GBBB"))]);
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             client.batch_set(&name, &intruder, &ops, &200);
         }));
         assert!(result.is_err(), "non-owner batch_set should fail");
         // Address unchanged
-        assert_eq!(
-            client.reverse(&String::from_str(&env, "GAAA")),
-            Some(name)
-        );
+        assert_eq!(client.reverse(&String::from_str(&env, "GAAA")), Some(name));
     }
 
     #[test]
@@ -668,7 +700,7 @@ mod tests {
                     String::from_str(&env, "https://alice.example"),
                 ),
                 BatchOp::SetText(
-                    String::from_str(&env, "BadKey"),  // uppercase — invalid
+                    String::from_str(&env, "BadKey"), // uppercase — invalid
                     String::from_str(&env, "value"),
                 ),
             ],
@@ -742,12 +774,7 @@ mod tests {
 
         // Register all three names with the same address
         for (i, n) in names.iter().enumerate() {
-            client.set_record(
-                &String::from_str(&env, n),
-                &owner,
-                &addr,
-                &(100 + i as u64),
-            );
+            client.set_record(&String::from_str(&env, n), &owner, &addr, &(100 + i as u64));
         }
 
         // Cycle through each name as the primary

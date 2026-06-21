@@ -4,13 +4,13 @@ mod tests {
     use crate::errors::SdkError;
     use crate::network;
     use crate::types::{
-        RegistrationRequest, RenewalRequest, SubmissionStatus, TextRecordUpdate,
-        TextRecordsUpdate, TransferRequest,
+        RegistrationRequest, RenewalRequest, SubmissionStatus, TextRecordUpdate, TextRecordsUpdate,
+        TransferRequest,
     };
+    use std::collections::HashMap;
     use stellar_rpc_client::Client;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
-    use std::collections::HashMap;
 
     /// A wiremock responder that echoes the JSON-RPC request ID
     /// from the incoming request, so jsonrpsee can match it.
@@ -24,8 +24,7 @@ mod tests {
     }
     impl Respond for JsonRpcResponder {
         fn respond(&self, request: &Request) -> ResponseTemplate {
-            let body: serde_json::Value =
-                serde_json::from_slice(&request.body).unwrap_or_default();
+            let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap_or_default();
             let id = body.get("id").cloned().unwrap_or(serde_json::json!(1));
             ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "jsonrpc": "2.0",

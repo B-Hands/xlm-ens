@@ -451,9 +451,9 @@ async fn run() -> anyhow::Result<()> {
             AuctionCommands::Settle { name, signer } => {
                 commands::auction::run_settle(config, &name, resolve_signer(signer)?).await
             }
-            AuctionCommands::Export { .. } | AuctionCommands::Import { .. } => {
-                Err(anyhow::anyhow!("auction text import/export is not implemented"))
-            }
+            AuctionCommands::Export { .. } | AuctionCommands::Import { .. } => Err(
+                anyhow::anyhow!("auction text import/export is not implemented"),
+            ),
         },
         Commands::Bridge(command) => match command {
             BridgeCommands::Register { chain } => {
@@ -465,9 +465,9 @@ async fn run() -> anyhow::Result<()> {
             BridgeCommands::Payload { name, chain } => {
                 commands::bridge::run_generate_payload(config, &name, &chain).await
             }
-            BridgeCommands::TestVectors => {
-                Err(anyhow::anyhow!("bridge test vector export is not implemented"))
-            }
+            BridgeCommands::TestVectors => Err(anyhow::anyhow!(
+                "bridge test vector export is not implemented"
+            )),
         },
         Commands::Subdomain(command) => match command {
             SubdomainCommands::RegisterParent { parent, owner } => {
@@ -514,9 +514,7 @@ async fn run() -> anyhow::Result<()> {
         Commands::Availability { name } => {
             commands::quote::run_availability(config, cli.output, &name).await
         }
-        Commands::Healthcheck => {
-            commands::healthcheck::run_healthcheck(config, cli.output).await
-        }
+        Commands::Healthcheck => commands::healthcheck::run_healthcheck(config, cli.output).await,
         Commands::Completions { .. } => unreachable!("handled above"),
     }
 }
@@ -616,8 +614,11 @@ mod tests {
             owner: "GDRA111".to_string(),
             signer: None,
         };
-        let result =
-            validate_contract_policy(&cmd, &ContractOverrides::default(), &config_with_no_contracts());
+        let result = validate_contract_policy(
+            &cmd,
+            &ContractOverrides::default(),
+            &config_with_no_contracts(),
+        );
         assert!(result.is_err());
         let msg = result.unwrap_err();
         assert!(
@@ -669,8 +670,11 @@ mod tests {
         let cmd = Commands::Resolve {
             name: "test.xlm".to_string(),
         };
-        let result =
-            validate_contract_policy(&cmd, &ContractOverrides::default(), &config_with_no_contracts());
+        let result = validate_contract_policy(
+            &cmd,
+            &ContractOverrides::default(),
+            &config_with_no_contracts(),
+        );
         assert!(result.is_err());
     }
 
@@ -704,8 +708,11 @@ mod tests {
             new_owner: "GDRANEW".to_string(),
             signer: None,
         };
-        let result =
-            validate_contract_policy(&cmd, &ContractOverrides::default(), &config_with_no_contracts());
+        let result = validate_contract_policy(
+            &cmd,
+            &ContractOverrides::default(),
+            &config_with_no_contracts(),
+        );
         assert!(result.is_err());
         let msg = result.unwrap_err();
         assert!(

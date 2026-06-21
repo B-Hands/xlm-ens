@@ -420,7 +420,10 @@ mod tests {
     /// Helper: extract the topics and data from the last contract event.
     fn last_event_topics_data(
         events: &soroban_sdk::testutils::ContractEvents,
-    ) -> (&soroban_sdk::xdr::VecM<soroban_sdk::xdr::ScVal>, &soroban_sdk::xdr::ScVal) {
+    ) -> (
+        &soroban_sdk::xdr::VecM<soroban_sdk::xdr::ScVal>,
+        &soroban_sdk::xdr::ScVal,
+    ) {
         let slice = events.events();
         assert!(!slice.is_empty(), "expected at least one event");
         let last = &slice[slice.len() - 1];
@@ -540,11 +543,7 @@ mod tests {
 
     use soroban_sdk::Vec as SdkVec;
 
-    fn assert_owner_enumeration_consistent(
-        env: &Env,
-        client: &NftContractClient,
-        owner: &Address,
-    ) {
+    fn assert_owner_enumeration_consistent(env: &Env, client: &NftContractClient, owner: &Address) {
         let balance = client.balance_of(owner);
         let mut seen: SdkVec<String> = SdkVec::new(env);
         for i in 0..balance {

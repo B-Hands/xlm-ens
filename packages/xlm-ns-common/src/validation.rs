@@ -180,14 +180,8 @@ mod tests {
 
     #[test]
     fn validates_contract_ids_and_account_addresses() {
-        assert_eq!(
-            validate_contract_id("C".repeat(56).as_str()),
-            Ok(())
-        );
-        assert_eq!(
-            validate_account_address("G".repeat(56).as_str()),
-            Ok(())
-        );
+        assert_eq!(validate_contract_id("C".repeat(56).as_str()), Ok(()));
+        assert_eq!(validate_account_address("G".repeat(56).as_str()), Ok(()));
         assert_eq!(
             validate_contract_id("bad"),
             Err(CommonError::InvalidContractId)

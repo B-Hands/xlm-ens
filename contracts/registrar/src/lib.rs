@@ -328,7 +328,13 @@ impl RegistrarContract {
 
         env.events().publish(
             (symbol_short!("registrar"), symbol_short!("reg")),
-            (label, owner, payment_stroops, record.expires_at, record.grace_period_ends_at),
+            (
+                label,
+                owner,
+                payment_stroops,
+                record.expires_at,
+                record.grace_period_ends_at,
+            ),
         );
 
         Ok(())
@@ -419,7 +425,13 @@ impl RegistrarContract {
 
         env.events().publish(
             (symbol_short!("registrar"), symbol_short!("renewed")),
-            (name, caller, payment_stroops, record.expires_at, record.grace_period_ends_at),
+            (
+                name,
+                caller,
+                payment_stroops,
+                record.expires_at,
+                record.grace_period_ends_at,
+            ),
         );
 
         Ok(())

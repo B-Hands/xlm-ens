@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod auction_integration {
-    use soroban_sdk::{testutils::Address as _, Address, Env, String};
     use soroban_sdk::token;
+    use soroban_sdk::{testutils::Address as _, Address, Env, String};
     use xlm_ns_auction::{AuctionContract, AuctionContractClient};
 
     fn setup_env() -> (Env, AuctionContractClient<'static>) {
@@ -11,10 +11,20 @@ mod auction_integration {
         (env, client)
     }
 
-    fn setup_token(env: &Env) -> (Address, token::StellarAssetClient<'static>, token::Client<'static>) {
+    fn setup_token(
+        env: &Env,
+    ) -> (
+        Address,
+        token::StellarAssetClient<'static>,
+        token::Client<'static>,
+    ) {
         let admin = Address::generate(env);
         let contract = env.register_stellar_asset_contract(admin.clone());
-        (contract.clone(), token::StellarAssetClient::new(env, &contract), token::Client::new(env, &contract))
+        (
+            contract.clone(),
+            token::StellarAssetClient::new(env, &contract),
+            token::Client::new(env, &contract),
+        )
     }
 
     struct TimeHelper {
@@ -49,7 +59,14 @@ mod auction_integration {
         let ends_at = time.future(1000);
 
         // Create auction
-        client.create_auction(&name, &asset, &treasury, &reserve_price, &starts_at, &ends_at);
+        client.create_auction(
+            &name,
+            &asset,
+            &treasury,
+            &reserve_price,
+            &starts_at,
+            &ends_at,
+        );
 
         let alice = Address::generate(&env);
         let bob = Address::generate(&env);
@@ -97,7 +114,14 @@ mod auction_integration {
         let starts_at = time.now;
         let ends_at = time.future(1000);
 
-        client.create_auction(&name, &asset, &treasury, &reserve_price, &starts_at, &ends_at);
+        client.create_auction(
+            &name,
+            &asset,
+            &treasury,
+            &reserve_price,
+            &starts_at,
+            &ends_at,
+        );
 
         let alice = Address::generate(&env);
         let bob = Address::generate(&env);
@@ -139,7 +163,14 @@ mod auction_integration {
         let mut time = TimeHelper::new(1000);
         let starts_at = time.now;
         let ends_at = time.future(1000);
-        client.create_auction(&name, &asset, &treasury, &reserve_price, &starts_at, &ends_at);
+        client.create_auction(
+            &name,
+            &asset,
+            &treasury,
+            &reserve_price,
+            &starts_at,
+            &ends_at,
+        );
 
         let alice = Address::generate(&env);
         token_admin.mint(&alice, &1000);
