@@ -1,7 +1,10 @@
 mod axelar;
 mod test;
 
-use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Env, String};
+use soroban_sdk::{
+    contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, Address,
+    Bytes, Env, String,
+};
 use xlm_ns_common::soroban::{validate_chain_name_soroban, validate_fqdn_soroban};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -16,6 +19,8 @@ pub struct BridgeRoute {
 #[contracttype]
 enum DataKey {
     Route(String),
+    Admin,
+    ContractVersion,
 }
 
 #[contracterror]
@@ -24,9 +29,17 @@ enum DataKey {
 pub enum BridgeError {
     Validation = 1,
     UnsupportedChain = 2,
+    UpgradeFailed = 3,
 }
 
 pub const CONTRACT_VERSION: u32 = 1;
+
+#[contractevent]
+pub struct ContractUpgraded {
+    pub old_version: u32,
+    pub new_version: u32,
+    pub admin: Address,
+}
 
 #[contract]
 pub struct BridgeContract;
@@ -35,6 +48,61 @@ pub struct BridgeContract;
 impl BridgeContract {
     pub fn version(_env: Env) -> u32 {
         CONTRACT_VERSION
+    }
+
+    pub fn initialize(env: Env, admin: Address) -> Result<(), BridgeError> {
+        if env.storage().instance().has(&DataKey::Admin) {
+            return Err(BridgeError::Validation);
+        }
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage()
+            .persistent()
+            .set(&DataKey::ContractVersion, &CONTRACT_VERSION);
+        Ok(())
+    }
+
+    pub fn get_version(env: Env) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::ContractVersion)
+            .unwrap_or(CONTRACT_VERSION)
+    }
+
+    pub fn upgrade(
+        env: Env,
+        new_wasm_hash: Bytes,
+        migration_data: Bytes,
+    ) -> Result<(), BridgeError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(BridgeError::UpgradeFailed)?;
+        admin.require_auth();
+
+        let current_version = Self::get_version(env.clone());
+        let target_version = decode_target_version(&migration_data);
+
+        for v in current_version..target_version {
+            migrate(v, v + 1, &migration_data);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::ContractVersion, &target_version);
+
+        env.events().publish(
+            (symbol_short!("bridge"), symbol_short!("upgraded")),
+            ContractUpgraded {
+                old_version: current_version,
+                new_version: target_version,
+                admin,
+            },
+        );
+
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+
+        Ok(())
     }
 
     pub fn register_chain(env: Env, chain: String) -> Result<(), BridgeError> {
@@ -154,4 +222,19 @@ fn build_reverse_gmp_message(
         env,
         &axelar::build_reverse_gmp_message(address, primary_name, destination_chain, resolver),
     )
+}
+
+fn migrate(from_version: u32, to_version: u32, _data: &Bytes) {
+    let _ = (from_version, to_version);
+}
+
+fn decode_target_version(data: &Bytes) -> u32 {
+    if data.len() < 4 {
+        return CONTRACT_VERSION + 1;
+    }
+    let b0 = data.get(0).unwrap_or(0);
+    let b1 = data.get(1).unwrap_or(0);
+    let b2 = data.get(2).unwrap_or(0);
+    let b3 = data.get(3).unwrap_or(0);
+    u32::from_be_bytes([b0, b1, b2, b3])
 }

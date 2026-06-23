@@ -1,7 +1,8 @@
 mod test;
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
+    contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, Address,
+    Bytes, Env, String, Vec,
 };
 use xlm_ns_common::soroban::{
     build_subdomain_name, validate_base_name_soroban, validate_fqdn_soroban,
@@ -29,6 +30,8 @@ enum DataKey {
     Subdomain(String),
     ParentSubdomains(String),
     OwnerSubdomains(Address),
+    Admin,
+    ContractVersion,
 }
 
 #[contracterror]
@@ -40,9 +43,17 @@ pub enum SubdomainError {
     AlreadyExists = 3,
     NotFound = 4,
     Unauthorized = 5,
+    UpgradeFailed = 6,
 }
 
 pub const CONTRACT_VERSION: u32 = 1;
+
+#[contractevent]
+pub struct ContractUpgraded {
+    pub old_version: u32,
+    pub new_version: u32,
+    pub admin: Address,
+}
 
 #[contract]
 pub struct SubdomainContract;
@@ -51,6 +62,61 @@ pub struct SubdomainContract;
 impl SubdomainContract {
     pub fn version(_env: Env) -> u32 {
         CONTRACT_VERSION
+    }
+
+    pub fn initialize(env: Env, admin: Address) -> Result<(), SubdomainError> {
+        if env.storage().instance().has(&DataKey::Admin) {
+            return Err(SubdomainError::AlreadyExists);
+        }
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage()
+            .persistent()
+            .set(&DataKey::ContractVersion, &CONTRACT_VERSION);
+        Ok(())
+    }
+
+    pub fn get_version(env: Env) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::ContractVersion)
+            .unwrap_or(CONTRACT_VERSION)
+    }
+
+    pub fn upgrade(
+        env: Env,
+        new_wasm_hash: Bytes,
+        migration_data: Bytes,
+    ) -> Result<(), SubdomainError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(SubdomainError::UpgradeFailed)?;
+        admin.require_auth();
+
+        let current_version = Self::get_version(env.clone());
+        let target_version = decode_target_version(&migration_data);
+
+        for v in current_version..target_version {
+            migrate(v, v + 1, &migration_data);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::ContractVersion, &target_version);
+
+        env.events().publish(
+            (symbol_short!("subdomain"), symbol_short!("upgraded")),
+            ContractUpgraded {
+                old_version: current_version,
+                new_version: target_version,
+                admin,
+            },
+        );
+
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+
+        Ok(())
     }
 
     /// Registers a parent domain to enable subdomain creation.
@@ -333,4 +399,19 @@ fn remove_owner_subdomain(env: &Env, owner: &Address, fqdn: &String) {
             .persistent()
             .set(&DataKey::OwnerSubdomains(owner.clone()), &subdomains);
     }
+}
+
+fn migrate(from_version: u32, to_version: u32, _data: &Bytes) {
+    let _ = (from_version, to_version);
+}
+
+fn decode_target_version(data: &Bytes) -> u32 {
+    if data.len() < 4 {
+        return CONTRACT_VERSION + 1;
+    }
+    let b0 = data.get(0).unwrap_or(0);
+    let b1 = data.get(1).unwrap_or(0);
+    let b2 = data.get(2).unwrap_or(0);
+    let b3 = data.get(3).unwrap_or(0);
+    u32::from_be_bytes([b0, b1, b2, b3])
 }

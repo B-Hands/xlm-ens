@@ -5,8 +5,8 @@ mod test;
 use expiry::expiry_from_now;
 use pricing::price_for_label_length;
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, IntoVal,
-    String, Symbol, Vec,
+    contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, Address,
+    Bytes, Env, IntoVal, String, Symbol, Vec,
 };
 use xlm_ns_common::soroban::{
     build_xlm_name, extract_label_soroban, validate_label_soroban,
@@ -16,6 +16,14 @@ use xlm_ns_common::time::grace_period_ends_at;
 pub use xlm_ns_common::GRACE_PERIOD_SECONDS;
 
 pub const ADMIN_RECOVERY_SUPPORTED: bool = false;
+pub const CONTRACT_VERSION: u32 = 1;
+
+#[contractevent]
+pub struct ContractUpgraded {
+    pub old_version: u32,
+    pub new_version: u32,
+    pub admin: Address,
+}
 
 // Default rate limit: 5 registrations per 24 hours (86400 seconds)
 pub const DEFAULT_RATE_LIMIT_WINDOW_SECONDS: u64 = 86400;
@@ -106,6 +114,8 @@ enum DataKey {
     RateLimitConfig,
     WhitelistedAddress(Address),
     RegistrationWindow(Address, u64),
+    Admin,
+    ContractVersion,
 }
 
 #[contracterror]
@@ -123,6 +133,7 @@ pub enum RegistrarError {
     NotInitialized = 9,
     AlreadyInitialized = 10,
     RateLimitExceeded = 11,
+    UpgradeFailed = 12,
 }
 
 #[contract]
@@ -130,12 +141,16 @@ pub struct RegistrarContract;
 
 #[contractimpl]
 impl RegistrarContract {
-    pub fn initialize(env: Env, registry: Address) -> Result<(), RegistrarError> {
+    pub fn initialize(env: Env, registry: Address, admin: Address) -> Result<(), RegistrarError> {
         if env.storage().instance().has(&DataKey::Registry) {
             return Err(RegistrarError::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Registry, &registry);
-        
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage()
+            .persistent()
+            .set(&DataKey::ContractVersion, &CONTRACT_VERSION);
+
         // Initialize rate limit config with defaults if not already set
         if !env
             .storage()
@@ -150,6 +165,54 @@ impl RegistrarContract {
                 .persistent()
                 .set(&DataKey::RateLimitConfig, &config);
         }
+        Ok(())
+    }
+
+    pub fn version(_env: Env) -> u32 {
+        CONTRACT_VERSION
+    }
+
+    pub fn get_version(env: Env) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::ContractVersion)
+            .unwrap_or(CONTRACT_VERSION)
+    }
+
+    pub fn upgrade(
+        env: Env,
+        new_wasm_hash: Bytes,
+        migration_data: Bytes,
+    ) -> Result<(), RegistrarError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(RegistrarError::UpgradeFailed)?;
+        admin.require_auth();
+
+        let current_version = Self::get_version(env.clone());
+        let target_version = decode_target_version(&migration_data);
+
+        for v in current_version..target_version {
+            migrate(v, v + 1, &migration_data);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::ContractVersion, &target_version);
+
+        env.events().publish(
+            (symbol_short!("registrar"), symbol_short!("upgraded")),
+            ContractUpgraded {
+                old_version: current_version,
+                new_version: target_version,
+                admin,
+            },
+        );
+
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+
         Ok(())
     }
 
@@ -757,4 +820,19 @@ pub fn can_renew(expiry_unix: u64, now_unix: u64) -> Result<bool, RegistrarError
     }
 
     Ok(true)
+}
+
+fn migrate(from_version: u32, to_version: u32, _data: &Bytes) {
+    let _ = (from_version, to_version);
+}
+
+fn decode_target_version(data: &Bytes) -> u32 {
+    if data.len() < 4 {
+        return CONTRACT_VERSION + 1;
+    }
+    let b0 = data.get(0).unwrap_or(0);
+    let b1 = data.get(1).unwrap_or(0);
+    let b2 = data.get(2).unwrap_or(0);
+    let b3 = data.get(3).unwrap_or(0);
+    u32::from_be_bytes([b0, b1, b2, b3])
 }

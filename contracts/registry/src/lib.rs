@@ -1,7 +1,8 @@
 mod test;
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
+    contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, Address,
+    Bytes, Env, String, Vec,
 };
 use xlm_ns_common::soroban::validate_fqdn_soroban;
 use xlm_ns_common::time::{is_active_at, is_claimable_at};
@@ -9,6 +10,14 @@ use xlm_ns_common::{DEFAULT_TTL_SECONDS, MAX_METADATA_URI_LENGTH};
 
 pub const ADMIN_RECOVERY_SUPPORTED: bool = false;
 pub const STORAGE_SCHEMA_VERSION: u32 = 1;
+pub const CONTRACT_VERSION: u32 = 1;
+
+#[contractevent]
+pub struct ContractUpgraded {
+    pub old_version: u32,
+    pub new_version: u32,
+    pub admin: Address,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
@@ -55,6 +64,8 @@ pub enum NameState {
 enum DataKey {
     Entry(String),
     OwnerNames(Address),
+    Admin,
+    ContractVersion,
 }
 
 #[contracterror]
@@ -70,6 +81,7 @@ pub enum RegistryError {
     Validation = 7,
     InvalidExpiry = 8,
     InvalidGracePeriod = 9,
+    UpgradeFailed = 10,
 }
 
 #[contract]
@@ -77,6 +89,65 @@ pub struct RegistryContract;
 
 #[contractimpl]
 impl RegistryContract {
+    pub fn initialize(env: Env, admin: Address) -> Result<(), RegistryError> {
+        if env.storage().instance().has(&DataKey::Admin) {
+            return Err(RegistryError::Unauthorized);
+        }
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage()
+            .persistent()
+            .set(&DataKey::ContractVersion, &CONTRACT_VERSION);
+        Ok(())
+    }
+
+    pub fn version(_env: Env) -> u32 {
+        CONTRACT_VERSION
+    }
+
+    pub fn get_version(env: Env) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::ContractVersion)
+            .unwrap_or(CONTRACT_VERSION)
+    }
+
+    pub fn upgrade(
+        env: Env,
+        new_wasm_hash: Bytes,
+        migration_data: Bytes,
+    ) -> Result<(), RegistryError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(RegistryError::UpgradeFailed)?;
+        admin.require_auth();
+
+        let current_version = Self::get_version(env.clone());
+        let target_version = decode_target_version(&migration_data);
+
+        for v in current_version..target_version {
+            migrate(v, v + 1, &migration_data);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::ContractVersion, &target_version);
+
+        env.events().publish(
+            (symbol_short!("contract"), symbol_short!("upgraded")),
+            ContractUpgraded {
+                old_version: current_version,
+                new_version: target_version,
+                admin,
+            },
+        );
+
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+
+        Ok(())
+    }
+
     // Mutating entrypoints require Soroban auth from the address that is
     // authorizing the state change, rather than relying on address equality
     // checks alone.
@@ -462,4 +533,19 @@ fn remove_owner_name(env: &Env, owner: &Address, name: &String) {
     }
 
     env.storage().persistent().set(&key, &filtered);
+}
+
+fn migrate(from_version: u32, to_version: u32, _data: &Bytes) {
+    let _ = (from_version, to_version);
+}
+
+fn decode_target_version(data: &Bytes) -> u32 {
+    if data.len() < 4 {
+        return CONTRACT_VERSION + 1;
+    }
+    let b0 = data.get(0).unwrap_or(0);
+    let b1 = data.get(1).unwrap_or(0);
+    let b2 = data.get(2).unwrap_or(0);
+    let b3 = data.get(3).unwrap_or(0);
+    u32::from_be_bytes([b0, b1, b2, b3])
 }
