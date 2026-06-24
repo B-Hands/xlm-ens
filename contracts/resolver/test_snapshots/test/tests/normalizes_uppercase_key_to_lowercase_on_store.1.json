@@ -8,8 +8,6 @@
     [],
     [],
     [],
-    [],
-    [],
     []
   ],
   "ledger": {
@@ -35,7 +33,7 @@
                     "symbol": "Forward"
                   },
                   {
-                    "string": "timmy.xlm"
+                    "string": "alice.xlm"
                   }
                 ]
               },
@@ -78,7 +76,7 @@
                             "string": "twitter"
                           },
                           "val": {
-                            "string": "@timmy"
+                            "string": "@alice"
                           }
                         }
                       ]
@@ -110,33 +108,6 @@
               "key": {
                 "vec": [
                   {
-                    "symbol": "Primary"
-                  },
-                  {
-                    "string": "GABC"
-                  }
-                ]
-              },
-              "durability": "persistent",
-              "val": {
-                "string": "timmy.xlm"
-              }
-            }
-          },
-          "ext": "v0"
-        },
-        "live_until": 6311999
-      },
-      {
-        "entry": {
-          "last_modified_ledger_seq": 0,
-          "data": {
-            "contract_data": {
-              "ext": "v0",
-              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "key": {
-                "vec": [
-                  {
                     "symbol": "Reverse"
                   },
                   {
@@ -146,7 +117,7 @@
               },
               "durability": "persistent",
               "val": {
-                "string": "timmy.xlm"
+                "string": "alice.xlm"
               }
             }
           },

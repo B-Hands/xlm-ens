@@ -80,18 +80,18 @@
                       "map": [
                         {
                           "key": {
-                            "string": "com.twitter"
-                          },
-                          "val": {
-                            "string": "@a1"
-                          }
-                        },
-                        {
-                          "key": {
                             "string": "email"
                           },
                           "val": {
                             "string": "c@c.com"
+                          }
+                        },
+                        {
+                          "key": {
+                            "string": "twitter"
+                          },
+                          "val": {
+                            "string": "@a1"
                           }
                         },
                         {

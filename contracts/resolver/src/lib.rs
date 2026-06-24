@@ -2,7 +2,7 @@ mod test;
 
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, Address,
-    Bytes, Env, IntoVal, Map, String, Symbol, Vec,
+    Bytes, BytesN, Env, IntoVal, Map, String, Symbol, Vec,
 };
 use xlm_ns_common::soroban::validate_fqdn_soroban;
 use xlm_ns_common::RegistryEntry;
@@ -70,6 +70,7 @@ enum DataKey {
     Registry,
     Admin,
     ContractVersion,
+    AllowedKeys,
 }
 
 #[contracterror]
@@ -88,6 +89,8 @@ pub enum ResolverError {
     // #154: batch payload exceeds the allowed operation count
     BatchTooLarge = 9,
     UpgradeFailed = 10,
+    // #431: key is valid format but not in the allowed schema
+    UnknownKey = 11,
 }
 
 // -------------------------------------------------------------------
@@ -96,7 +99,6 @@ pub enum ResolverError {
 
 /// Emitted when a forward record (name → address) is created or updated.
 #[contractevent]
-#[contracttype]
 pub struct ForwardUpdated {
     pub name: String,
     pub address: String,
@@ -106,7 +108,6 @@ pub struct ForwardUpdated {
 
 /// Emitted when a reverse mapping (address → name) is written.
 #[contractevent]
-#[contracttype]
 pub struct ReverseUpdated {
     pub address: String,
     pub name: String,
@@ -114,7 +115,6 @@ pub struct ReverseUpdated {
 
 /// Emitted when a primary name is set for an address.
 #[contractevent]
-#[contracttype]
 pub struct PrimaryNameSet {
     pub address: String,
     pub name: String,
@@ -122,7 +122,6 @@ pub struct PrimaryNameSet {
 
 /// Emitted when a text record is created or updated.
 #[contractevent]
-#[contracttype]
 pub struct TextRecordUpdated {
     pub name: String,
     pub key: String,
@@ -132,7 +131,6 @@ pub struct TextRecordUpdated {
 
 /// Emitted when a record (and its reverse/primary) is removed.
 #[contractevent]
-#[contracttype]
 pub struct RecordRemoved {
     pub name: String,
     pub former_address: Option<String>,
@@ -140,7 +138,6 @@ pub struct RecordRemoved {
 
 /// Emitted when the contract is upgraded.
 #[contractevent]
-#[contracttype]
 pub struct ContractUpgraded {
     pub old_version: u32,
     pub new_version: u32,
@@ -167,6 +164,9 @@ impl ResolverContract {
         env.storage()
             .persistent()
             .set(&DataKey::ContractVersion, &CONTRACT_VERSION);
+        env.storage()
+            .instance()
+            .set(&DataKey::AllowedKeys, &default_allowed_keys(&env));
         extend_instance_ttl(&env);
         Ok(())
     }
@@ -201,16 +201,14 @@ impl ResolverContract {
             .persistent()
             .set(&DataKey::ContractVersion, &target_version);
 
-        env.events().publish(
-            (symbol_short!("resolver"), symbol_short!("upgraded")),
-            ContractUpgraded {
-                old_version: current_version,
-                new_version: target_version,
-                admin,
-            },
-        );
+        ContractUpgraded {
+            old_version: current_version,
+            new_version: target_version,
+            admin,
+        }
+        .publish(&env);
 
-        env.deployer().update_current_contract_wasm(new_wasm_hash.to_bytes());
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
 
         Ok(())
     }
@@ -368,8 +366,8 @@ impl ResolverContract {
         value: String,
         now_unix: u64,
     ) -> Result<(), ResolverError> {
-        // Issue #314: Validate text-record key normalization.
-        validate_text_record_key(&key).map_err(|_| ResolverError::InvalidKey)?;
+        // #431: Normalize key to lowercase, validate format and schema.
+        let key = validate_text_key(&env, &key)?;
 
         // Issue #315: Validate text record value size
         if (value.len() as usize) > MAX_TEXT_RECORD_VALUE_LENGTH {
@@ -603,13 +601,12 @@ impl ResolverContract {
                     applied += 1;
                 }
                 BatchOp::SetText(key, value) => {
-                    // Validate key
-                    if validate_text_record_key(&key).is_err() {
-                        // partial-failure semantics: skip invalid ops rather than
-                        // aborting the entire batch so callers get best-effort
-                        // application.
-                        continue;
-                    }
+                    // #431: Normalize and validate key against schema.
+                    // Partial-failure semantics: skip invalid or unknown keys.
+                    let key = match validate_text_key(&env, &key) {
+                        Ok(k) => k,
+                        Err(_) => continue,
+                    };
                     if (value.len() as usize) > MAX_TEXT_RECORD_VALUE_LENGTH {
                         continue;
                     }
@@ -636,6 +633,61 @@ impl ResolverContract {
         extend_instance_ttl(&env); // #146
 
         Ok(applied)
+    }
+
+    // #431: Return the current list of allowed text-record keys.
+    pub fn get_allowed_keys(env: Env) -> Vec<String> {
+        env.storage()
+            .instance()
+            .get(&DataKey::AllowedKeys)
+            .unwrap_or_else(|| default_allowed_keys(&env))
+    }
+
+    // #431: Admin-only: add a new key to the allowed schema.
+    pub fn add_allowed_key(env: Env, key: String) -> Result<(), ResolverError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(ResolverError::NotInitialized)?;
+        admin.require_auth();
+
+        let len = key.len() as usize;
+        if len == 0 || len > 64 {
+            return Err(ResolverError::InvalidKey);
+        }
+        let mut buf = [0u8; 64];
+        key.copy_into_slice(&mut buf[..len]);
+        for b in &buf[..len] {
+            let valid = b.is_ascii_lowercase()
+                || b.is_ascii_digit()
+                || *b == b'.'
+                || *b == b'-'
+                || *b == b'_';
+            if !valid {
+                return Err(ResolverError::InvalidKey);
+            }
+        }
+
+        let mut allowed: Vec<String> = env
+            .storage()
+            .instance()
+            .get(&DataKey::AllowedKeys)
+            .unwrap_or_else(|| default_allowed_keys(&env));
+
+        for k in allowed.iter() {
+            if k == key {
+                return Ok(());
+            }
+        }
+
+        allowed.push_back(key);
+        env.storage()
+            .instance()
+            .set(&DataKey::AllowedKeys, &allowed);
+        extend_instance_ttl(&env);
+
+        Ok(())
     }
 }
 
@@ -701,34 +753,102 @@ fn put_record(env: &Env, name: &String, record: &ResolutionRecord) {
     extend_persistent_ttl(env, &key); // #146
 }
 
-/// Issue #314: Validate a text-record key.
-///
-/// Rules:
-/// - Length: 1–64 bytes (inclusive).
-/// - Characters: lowercase ASCII letters `a-z`, digits `0-9`, dot `.`,
-///   dash `-`, or underscore `_`.
-/// - Namespace convention (e.g. `com.twitter`, `org.did`) is allowed via dots.
-///
-/// Keys are stored exactly as supplied; callers must normalise before calling
-/// (e.g. lowercase the key) because two differently-cased writes produce two
-/// distinct storage entries.
-fn validate_text_record_key(key: &String) -> Result<(), ()> {
-    const MAX_KEY_LEN: usize = 64;
-    let len = key.len() as usize;
-    if len == 0 || len > MAX_KEY_LEN {
-        return Err(());
+/// #431: Build the default set of standard text-record keys.
+fn default_allowed_keys(env: &Env) -> Vec<String> {
+    let mut v = Vec::new(env);
+    for key in &[
+        "email",
+        "url",
+        "avatar",
+        "description",
+        "twitter",
+        "github",
+        "discord",
+        "telegram",
+        "nostr",
+    ] {
+        v.push_back(String::from_str(env, key));
     }
-    let mut buf = [0u8; MAX_KEY_LEN];
-    key.copy_into_slice(&mut buf[..len]);
-    for byte in &buf[..len] {
-        let b = *byte;
-        let ok =
-            b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-' || b == b'_';
-        if !ok {
-            return Err(());
+    v
+}
+
+/// #431: Return true if key is present in the admin-managed allowed-keys list.
+/// Falls back to the default standard set if no list has been stored yet.
+fn key_in_schema(env: &Env, key: &String) -> bool {
+    let allowed: Vec<String> = env
+        .storage()
+        .instance()
+        .get(&DataKey::AllowedKeys)
+        .unwrap_or_else(|| default_allowed_keys(env));
+    for k in allowed.iter() {
+        if k == *key {
+            return true;
         }
     }
-    Ok(())
+    false
+}
+
+/// #431: Normalize a text-record key to lowercase, validate its format, and
+/// check it against the allowed-key schema.
+///
+/// Returns the normalized key on success.
+///
+/// Keys with a `custom:` prefix bypass the schema check but their suffix must
+/// still satisfy the standard character rules (`[a-z0-9._-]`).
+fn validate_text_key(env: &Env, key: &String) -> Result<String, ResolverError> {
+    const MAX_KEY_LEN: usize = 64;
+    const CUSTOM_PREFIX: &[u8] = b"custom:";
+    const CUSTOM_PREFIX_LEN: usize = 7;
+
+    let len = key.len() as usize;
+    if len == 0 || len > MAX_KEY_LEN {
+        return Err(ResolverError::InvalidKey);
+    }
+
+    let mut buf = [0u8; MAX_KEY_LEN];
+    key.copy_into_slice(&mut buf[..len]);
+
+    for b in &mut buf[..len] {
+        if b.is_ascii_uppercase() {
+            *b = b.to_ascii_lowercase();
+        }
+    }
+
+    let normalized = match core::str::from_utf8(&buf[..len]) {
+        Ok(s) => String::from_str(env, s),
+        Err(_) => return Err(ResolverError::InvalidKey),
+    };
+
+    if len > CUSTOM_PREFIX_LEN && &buf[..CUSTOM_PREFIX_LEN] == CUSTOM_PREFIX {
+        for b in &buf[CUSTOM_PREFIX_LEN..len] {
+            let valid = b.is_ascii_lowercase()
+                || b.is_ascii_digit()
+                || *b == b'.'
+                || *b == b'-'
+                || *b == b'_';
+            if !valid {
+                return Err(ResolverError::InvalidKey);
+            }
+        }
+        return Ok(normalized);
+    }
+
+    for b in &buf[..len] {
+        let valid = b.is_ascii_lowercase()
+            || b.is_ascii_digit()
+            || *b == b'.'
+            || *b == b'-'
+            || *b == b'_';
+        if !valid {
+            return Err(ResolverError::InvalidKey);
+        }
+    }
+
+    if !key_in_schema(env, &normalized) {
+        return Err(ResolverError::UnknownKey);
+    }
+
+    Ok(normalized)
 }
 
 fn migrate(from_version: u32, to_version: u32, _data: &Bytes) {

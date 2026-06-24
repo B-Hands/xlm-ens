@@ -8,8 +8,6 @@
     [],
     [],
     [],
-    [],
-    [],
     []
   ],
   "ledger": {
@@ -35,7 +33,7 @@
                     "symbol": "Forward"
                   },
                   {
-                    "string": "timmy.xlm"
+                    "string": "alice.xlm"
                   }
                 ]
               },
@@ -53,7 +51,7 @@
                             "string": "stellar"
                           },
                           "val": {
-                            "string": "GABC"
+                            "string": "GAAA"
                           }
                         }
                       ]
@@ -75,10 +73,10 @@
                       "map": [
                         {
                           "key": {
-                            "string": "twitter"
+                            "string": "url"
                           },
                           "val": {
-                            "string": "@timmy"
+                            "string": "https://alice.example"
                           }
                         }
                       ]
@@ -89,37 +87,10 @@
                       "symbol": "updated_at"
                     },
                     "val": {
-                      "u64": "101"
+                      "u64": "200"
                     }
                   }
                 ]
-              }
-            }
-          },
-          "ext": "v0"
-        },
-        "live_until": 6311999
-      },
-      {
-        "entry": {
-          "last_modified_ledger_seq": 0,
-          "data": {
-            "contract_data": {
-              "ext": "v0",
-              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "key": {
-                "vec": [
-                  {
-                    "symbol": "Primary"
-                  },
-                  {
-                    "string": "GABC"
-                  }
-                ]
-              },
-              "durability": "persistent",
-              "val": {
-                "string": "timmy.xlm"
               }
             }
           },
@@ -140,13 +111,13 @@
                     "symbol": "Reverse"
                   },
                   {
-                    "string": "GABC"
+                    "string": "GAAA"
                   }
                 ]
               },
               "durability": "persistent",
               "val": {
-                "string": "timmy.xlm"
+                "string": "alice.xlm"
               }
             }
           },
