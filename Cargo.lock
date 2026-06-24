@@ -4314,6 +4314,8 @@ name = "xlm-ns-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
+ "chrono",
  "clap",
  "clap_complete",
  "csv",
