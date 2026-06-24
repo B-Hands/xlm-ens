@@ -3,7 +3,7 @@ mod test;
 
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, Address,
-    Bytes, Env, String, Vec,
+    Bytes, BytesN, Env, String, Vec,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -37,7 +37,6 @@ pub enum NftError {
 pub const CONTRACT_VERSION: u32 = 1;
 
 #[contractevent]
-#[contracttype]
 pub struct ContractUpgraded {
     pub old_version: u32,
     pub new_version: u32,
@@ -71,7 +70,11 @@ impl NftContract {
             .unwrap_or(CONTRACT_VERSION)
     }
 
-    pub fn upgrade(env: Env, new_wasm_hash: Bytes, migration_data: Bytes) -> Result<(), NftError> {
+    pub fn upgrade(
+        env: Env,
+        new_wasm_hash: BytesN<32>,
+        migration_data: Bytes,
+    ) -> Result<(), NftError> {
         let admin: Address = env
             .storage()
             .instance()
@@ -90,16 +93,14 @@ impl NftContract {
             .persistent()
             .set(&DataKey::ContractVersion, &target_version);
 
-        env.events().publish(
-            (symbol_short!("nft"), symbol_short!("upgraded")),
-            ContractUpgraded {
-                old_version: current_version,
-                new_version: target_version,
-                admin,
-            },
-        );
+        ContractUpgraded {
+            old_version: current_version,
+            new_version: target_version,
+            admin,
+        }
+        .publish(&env);
 
-        env.deployer().update_current_contract_wasm(new_wasm_hash.to_bytes());
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
 
         Ok(())
     }

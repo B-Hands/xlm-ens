@@ -129,7 +129,7 @@ fn bench_resolver_set_record_mutation() {
     let registry = RegistryContractClient::new(&env, &registry_id);
     let resolver_id = env.register(ResolverContract, ());
     let resolver = ResolverContractClient::new(&env, &resolver_id);
-    resolver.initialize(&registry_id);
+    resolver.initialize(&registry_id, &Address::generate(&env));
 
     let owner = Address::generate(&env);
     let now: u64 = 1_000_000;

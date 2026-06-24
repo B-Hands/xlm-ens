@@ -933,6 +933,7 @@ fn validate_contract_policy(
         Commands::Availability { .. } => ("availability", &[ContractKind::Registry], &[]),
         // Healthcheck is purely informational: all contract flags are allowed
         // (they are reflected in the output) and none are required.
+        Commands::History { .. } => ("history", &[], &[]),
         Commands::Healthcheck => (
             "healthcheck",
             &[

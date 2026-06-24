@@ -9,6 +9,7 @@
     [],
     [],
     [],
+    [],
     [
       [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
@@ -19,7 +20,7 @@
               "function_name": "register",
               "args": [
                 {
-                  "string": "timmy"
+                  "string": "count0"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
@@ -31,7 +32,7 @@
                   "u64": "250000000"
                 },
                 {
-                  "u64": "100"
+                  "u64": "1000"
                 }
               ]
             }
@@ -44,7 +45,7 @@
                   "function_name": "register",
                   "args": [
                     {
-                      "string": "timmy.xlm"
+                      "string": "count0.xlm"
                     },
                     {
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
@@ -52,13 +53,13 @@
                     "void",
                     "void",
                     {
-                      "u64": "100"
+                      "u64": "1000"
                     },
                     {
-                      "u64": "31536100"
+                      "u64": "31537000"
                     },
                     {
-                      "u64": "34128100"
+                      "u64": "34129000"
                     }
                   ]
                 }
@@ -77,10 +78,10 @@
           "function": {
             "contract_fn": {
               "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "function_name": "renew",
+              "function_name": "register",
               "args": [
                 {
-                  "string": "timmy.xlm"
+                  "string": "count1"
                 },
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
@@ -92,7 +93,7 @@
                   "u64": "250000000"
                 },
                 {
-                  "u64": "200"
+                  "u64": "1000"
                 }
               ]
             }
@@ -102,22 +103,24 @@
               "function": {
                 "contract_fn": {
                   "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-                  "function_name": "renew",
+                  "function_name": "register",
                   "args": [
                     {
-                      "string": "timmy.xlm"
+                      "string": "count1.xlm"
                     },
                     {
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
                     },
+                    "void",
+                    "void",
                     {
-                      "u64": "63072100"
+                      "u64": "1000"
                     },
                     {
-                      "u64": "65664100"
+                      "u64": "31537000"
                     },
                     {
-                      "u64": "200"
+                      "u64": "34129000"
                     }
                   ]
                 }
@@ -129,6 +132,66 @@
       ]
     ],
     [],
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "function_name": "register",
+              "args": [
+                {
+                  "string": "count2"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                },
+                {
+                  "u64": "1"
+                },
+                {
+                  "u64": "250000000"
+                },
+                {
+                  "u64": "1000"
+                }
+              ]
+            }
+          },
+          "sub_invocations": [
+            {
+              "function": {
+                "contract_fn": {
+                  "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+                  "function_name": "register",
+                  "args": [
+                    {
+                      "string": "count2.xlm"
+                    },
+                    {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                    },
+                    "void",
+                    "void",
+                    {
+                      "u64": "1000"
+                    },
+                    {
+                      "u64": "31537000"
+                    },
+                    {
+                      "u64": "34129000"
+                    }
+                  ]
+                }
+              },
+              "sub_invocations": []
+            }
+          ]
+        }
+      ]
+    ],
     []
   ],
   "ledger": {
@@ -219,7 +282,7 @@
                     "symbol": "Registration"
                   },
                   {
-                    "string": "timmy.xlm"
+                    "string": "count0.xlm"
                   }
                 ]
               },
@@ -231,7 +294,7 @@
                       "symbol": "expires_at"
                     },
                     "val": {
-                      "u64": "63072100"
+                      "u64": "31537000"
                     }
                   },
                   {
@@ -239,7 +302,7 @@
                       "symbol": "fee_paid"
                     },
                     "val": {
-                      "u64": "500000000"
+                      "u64": "250000000"
                     }
                   },
                   {
@@ -247,7 +310,7 @@
                       "symbol": "grace_period_ends_at"
                     },
                     "val": {
-                      "u64": "65664100"
+                      "u64": "34129000"
                     }
                   },
                   {
@@ -255,7 +318,7 @@
                       "symbol": "name"
                     },
                     "val": {
-                      "string": "timmy.xlm"
+                      "string": "count0.xlm"
                     }
                   },
                   {
@@ -271,7 +334,7 @@
                       "symbol": "registered_at"
                     },
                     "val": {
-                      "u64": "100"
+                      "u64": "1000"
                     }
                   },
                   {
@@ -279,7 +342,175 @@
                       "symbol": "renewed_at"
                     },
                     "val": {
-                      "u64": "200"
+                      "u64": "1000"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 4095
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "key": {
+                "vec": [
+                  {
+                    "symbol": "Registration"
+                  },
+                  {
+                    "string": "count1.xlm"
+                  }
+                ]
+              },
+              "durability": "persistent",
+              "val": {
+                "map": [
+                  {
+                    "key": {
+                      "symbol": "expires_at"
+                    },
+                    "val": {
+                      "u64": "31537000"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "fee_paid"
+                    },
+                    "val": {
+                      "u64": "250000000"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "grace_period_ends_at"
+                    },
+                    "val": {
+                      "u64": "34129000"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "name"
+                    },
+                    "val": {
+                      "string": "count1.xlm"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "owner"
+                    },
+                    "val": {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "registered_at"
+                    },
+                    "val": {
+                      "u64": "1000"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "renewed_at"
+                    },
+                    "val": {
+                      "u64": "1000"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 4095
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "key": {
+                "vec": [
+                  {
+                    "symbol": "Registration"
+                  },
+                  {
+                    "string": "count2.xlm"
+                  }
+                ]
+              },
+              "durability": "persistent",
+              "val": {
+                "map": [
+                  {
+                    "key": {
+                      "symbol": "expires_at"
+                    },
+                    "val": {
+                      "u64": "31537000"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "fee_paid"
+                    },
+                    "val": {
+                      "u64": "250000000"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "grace_period_ends_at"
+                    },
+                    "val": {
+                      "u64": "34129000"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "name"
+                    },
+                    "val": {
+                      "string": "count2.xlm"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "owner"
+                    },
+                    "val": {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "registered_at"
+                    },
+                    "val": {
+                      "u64": "1000"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "renewed_at"
+                    },
+                    "val": {
+                      "u64": "1000"
                     }
                   }
                 ]
@@ -306,7 +537,7 @@
               },
               "durability": "persistent",
               "val": {
-                "u64": "1"
+                "u64": "3"
               }
             }
           },
@@ -336,31 +567,7 @@
               },
               "durability": "persistent",
               "val": {
-                "u64": "1"
-              }
-            }
-          },
-          "ext": "v0"
-        },
-        "live_until": 4095
-      },
-      {
-        "entry": {
-          "last_modified_ledger_seq": 0,
-          "data": {
-            "contract_data": {
-              "ext": "v0",
-              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "key": {
-                "vec": [
-                  {
-                    "symbol": "RenewalCount"
-                  }
-                ]
-              },
-              "durability": "persistent",
-              "val": {
-                "u64": "1"
+                "u64": "3"
               }
             }
           },
@@ -384,7 +591,7 @@
               },
               "durability": "persistent",
               "val": {
-                "u64": "500000000"
+                "u64": "750000000"
               }
             }
           },
@@ -453,7 +660,7 @@
                     "symbol": "Entry"
                   },
                   {
-                    "string": "timmy.xlm"
+                    "string": "count0.xlm"
                   }
                 ]
               },
@@ -465,7 +672,7 @@
                       "symbol": "expires_at"
                     },
                     "val": {
-                      "u64": "63072100"
+                      "u64": "31537000"
                     }
                   },
                   {
@@ -473,7 +680,7 @@
                       "symbol": "grace_period_ends_at"
                     },
                     "val": {
-                      "u64": "65664100"
+                      "u64": "34129000"
                     }
                   },
                   {
@@ -487,7 +694,7 @@
                       "symbol": "name"
                     },
                     "val": {
-                      "string": "timmy.xlm"
+                      "string": "count0.xlm"
                     }
                   },
                   {
@@ -503,7 +710,211 @@
                       "symbol": "registered_at"
                     },
                     "val": {
-                      "u64": "100"
+                      "u64": "1000"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "resolver"
+                    },
+                    "val": "void"
+                  },
+                  {
+                    "key": {
+                      "symbol": "target_address"
+                    },
+                    "val": "void"
+                  },
+                  {
+                    "key": {
+                      "symbol": "transfer_count"
+                    },
+                    "val": {
+                      "u32": 0
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "ttl_seconds"
+                    },
+                    "val": {
+                      "u64": "31536000"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 4095
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+              "key": {
+                "vec": [
+                  {
+                    "symbol": "Entry"
+                  },
+                  {
+                    "string": "count1.xlm"
+                  }
+                ]
+              },
+              "durability": "persistent",
+              "val": {
+                "map": [
+                  {
+                    "key": {
+                      "symbol": "expires_at"
+                    },
+                    "val": {
+                      "u64": "31537000"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "grace_period_ends_at"
+                    },
+                    "val": {
+                      "u64": "34129000"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "metadata_uri"
+                    },
+                    "val": "void"
+                  },
+                  {
+                    "key": {
+                      "symbol": "name"
+                    },
+                    "val": {
+                      "string": "count1.xlm"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "owner"
+                    },
+                    "val": {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "registered_at"
+                    },
+                    "val": {
+                      "u64": "1000"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "resolver"
+                    },
+                    "val": "void"
+                  },
+                  {
+                    "key": {
+                      "symbol": "target_address"
+                    },
+                    "val": "void"
+                  },
+                  {
+                    "key": {
+                      "symbol": "transfer_count"
+                    },
+                    "val": {
+                      "u32": 0
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "ttl_seconds"
+                    },
+                    "val": {
+                      "u64": "31536000"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 4095
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+              "key": {
+                "vec": [
+                  {
+                    "symbol": "Entry"
+                  },
+                  {
+                    "string": "count2.xlm"
+                  }
+                ]
+              },
+              "durability": "persistent",
+              "val": {
+                "map": [
+                  {
+                    "key": {
+                      "symbol": "expires_at"
+                    },
+                    "val": {
+                      "u64": "31537000"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "grace_period_ends_at"
+                    },
+                    "val": {
+                      "u64": "34129000"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "metadata_uri"
+                    },
+                    "val": "void"
+                  },
+                  {
+                    "key": {
+                      "symbol": "name"
+                    },
+                    "val": {
+                      "string": "count2.xlm"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "owner"
+                    },
+                    "val": {
+                      "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "registered_at"
+                    },
+                    "val": {
+                      "u64": "1000"
                     }
                   },
                   {
@@ -563,7 +974,13 @@
               "val": {
                 "vec": [
                   {
-                    "string": "timmy.xlm"
+                    "string": "count0.xlm"
+                  },
+                  {
+                    "string": "count1.xlm"
+                  },
+                  {
+                    "string": "count2.xlm"
                   }
                 ]
               }
@@ -606,6 +1023,26 @@
               "key": {
                 "ledger_key_nonce": {
                   "nonce": "801925984706572462"
+                }
+              },
+              "durability": "temporary",
+              "val": "void"
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 6311999
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
+              "key": {
+                "ledger_key_nonce": {
+                  "nonce": "1033654523790656264"
                 }
               },
               "durability": "temporary",

@@ -6,7 +6,7 @@ use expiry::expiry_from_now;
 use pricing::price_for_label_length;
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, Address,
-    Bytes, Env, IntoVal, String, Symbol, Vec,
+    Bytes, BytesN, Env, IntoVal, String, Symbol, Vec,
 };
 use xlm_ns_common::soroban::{
     build_xlm_name, extract_label_soroban, validate_label_soroban,
@@ -19,7 +19,6 @@ pub const ADMIN_RECOVERY_SUPPORTED: bool = false;
 pub const CONTRACT_VERSION: u32 = 1;
 
 #[contractevent]
-#[contracttype]
 pub struct ContractUpgraded {
     pub old_version: u32,
     pub new_version: u32,
@@ -199,16 +198,14 @@ impl RegistrarContract {
             .persistent()
             .set(&DataKey::ContractVersion, &target_version);
 
-        env.events().publish(
-            (symbol_short!("registrar"), symbol_short!("upgraded")),
-            ContractUpgraded {
-                old_version: current_version,
-                new_version: target_version,
-                admin,
-            },
-        );
+        ContractUpgraded {
+            old_version: current_version,
+            new_version: target_version,
+            admin,
+        }
+        .publish(&env);
 
-        env.deployer().update_current_contract_wasm(new_wasm_hash.to_bytes());
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
 
         Ok(())
     }
@@ -708,7 +705,7 @@ impl RegistrarContract {
 
     /// Get rate limit status for an address (read-only)
     pub fn get_registrations_in_window(env: Env, address: Address, now_unix: u64) -> u64 {
-        let config = Self::get_rate_limit_config(&env);
+        let config = Self::get_rate_limit_config(env.clone());
         let window_start = now_unix.saturating_sub(config.window_size_seconds);
         let key = DataKey::RegistrationWindow(address, window_start);
         env.storage().persistent().get::<_, u64>(&key).unwrap_or(0)

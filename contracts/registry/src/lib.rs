@@ -2,7 +2,7 @@ mod test;
 
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, Address,
-    Bytes, Env, String, Vec,
+    Bytes, BytesN, Env, String, Vec,
 };
 use xlm_ns_common::soroban::validate_fqdn_soroban;
 use xlm_ns_common::time::{is_active_at, is_claimable_at};
@@ -13,7 +13,6 @@ pub const STORAGE_SCHEMA_VERSION: u32 = 1;
 pub const CONTRACT_VERSION: u32 = 1;
 
 #[contractevent]
-#[contracttype]
 pub struct ContractUpgraded {
     pub old_version: u32,
     pub new_version: u32,
@@ -114,7 +113,7 @@ impl RegistryContract {
 
     pub fn upgrade(
         env: Env,
-        new_wasm_hash: Bytes,
+        new_wasm_hash: BytesN<32>,
         migration_data: Bytes,
     ) -> Result<(), RegistryError> {
         let admin: Address = env
@@ -135,14 +134,12 @@ impl RegistryContract {
             .persistent()
             .set(&DataKey::ContractVersion, &target_version);
 
-        env.events().publish(
-            (symbol_short!("contract"), symbol_short!("upgraded")),
-            ContractUpgraded {
-                old_version: current_version,
-                new_version: target_version,
-                admin,
-            },
-        );
+        ContractUpgraded {
+            old_version: current_version,
+            new_version: target_version,
+            admin,
+        }
+        .publish(&env);
 
         env.deployer().update_current_contract_wasm(new_wasm_hash);
 

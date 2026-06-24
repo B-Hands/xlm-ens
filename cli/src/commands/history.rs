@@ -1,6 +1,6 @@
-use anyhow::{anyhow, Context};
 use crate::config::NetworkConfig;
 use crate::output::OutputFormat;
+use anyhow::{anyhow, Context};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -120,8 +120,7 @@ struct HistoryCache {
 impl HistoryCache {
     fn new() -> anyhow::Result<Self> {
         let cache_dir = Self::get_cache_dir()?;
-        fs::create_dir_all(&cache_dir)
-            .context("Failed to create cache directory")?;
+        fs::create_dir_all(&cache_dir).context("Failed to create cache directory")?;
         Ok(Self { cache_dir })
     }
 
@@ -129,9 +128,7 @@ impl HistoryCache {
         #[cfg(target_os = "windows")]
         {
             if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-                return Ok(PathBuf::from(local_app_data)
-                    .join("xlm-ns")
-                    .join("cache"));
+                return Ok(PathBuf::from(local_app_data).join("xlm-ns").join("cache"));
             }
         }
 
@@ -151,9 +148,7 @@ impl HistoryCache {
                 return Ok(PathBuf::from(cache_home).join("xlm-ns"));
             }
             if let Ok(home) = std::env::var("HOME") {
-                return Ok(PathBuf::from(home)
-                    .join(".cache")
-                    .join("xlm-ns"));
+                return Ok(PathBuf::from(home).join(".cache").join("xlm-ns"));
             }
         }
 
@@ -171,7 +166,13 @@ impl HistoryCache {
         // Use a safe filename based on the key
         let safe_key = key
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect::<String>();
         self.cache_dir.join(format!("{}.json", safe_key))
     }
@@ -192,7 +193,12 @@ impl HistoryCache {
         false
     }
 
-    fn read(&self, address: Option<&str>, name: Option<&str>, limit: usize) -> anyhow::Result<Option<Vec<HistoryEvent>>> {
+    fn read(
+        &self,
+        address: Option<&str>,
+        name: Option<&str>,
+        limit: usize,
+    ) -> anyhow::Result<Option<Vec<HistoryEvent>>> {
         let key = Self::make_cache_key(address, name, limit);
         let path = self.get_cache_path(&key);
 
@@ -200,21 +206,23 @@ impl HistoryCache {
             return Ok(None);
         }
 
-        let content = fs::read_to_string(&path)
-            .context("Failed to read cache file")?;
-        let events = serde_json::from_str(&content)
-            .context("Failed to parse cached events")?;
+        let content = fs::read_to_string(&path).context("Failed to read cache file")?;
+        let events = serde_json::from_str(&content).context("Failed to parse cached events")?;
         Ok(Some(events))
     }
 
-    fn write(&self, address: Option<&str>, name: Option<&str>, limit: usize, events: &[HistoryEvent]) -> anyhow::Result<()> {
+    fn write(
+        &self,
+        address: Option<&str>,
+        name: Option<&str>,
+        limit: usize,
+        events: &[HistoryEvent],
+    ) -> anyhow::Result<()> {
         let key = Self::make_cache_key(address, name, limit);
         let path = self.get_cache_path(&key);
 
-        let content = serde_json::to_string(events)
-            .context("Failed to serialize events")?;
-        fs::write(&path, content)
-            .context("Failed to write cache file")?;
+        let content = serde_json::to_string(events).context("Failed to serialize events")?;
+        fs::write(&path, content).context("Failed to write cache file")?;
         Ok(())
     }
 }
@@ -228,11 +236,8 @@ trait HistoryProvider {
         limit: usize,
     ) -> anyhow::Result<Vec<HistoryEvent>>;
 
-    async fn get_name_history(
-        &self,
-        name: &str,
-        limit: usize,
-    ) -> anyhow::Result<Vec<HistoryEvent>>;
+    async fn get_name_history(&self, name: &str, limit: usize)
+        -> anyhow::Result<Vec<HistoryEvent>>;
 }
 
 /// Soroban-based history provider using stellar-rpc-client
@@ -250,7 +255,11 @@ impl SorobanHistoryProvider {
     }
 
     fn build_explorer_url(&self, tx_hash: &str) -> String {
-        let network_name = if self.network == "testnet" { "testnet" } else { "public" };
+        let network_name = if self.network == "testnet" {
+            "testnet"
+        } else {
+            "public"
+        };
         format!(
             "https://stellar.expert/explorer/{}/tx/{}",
             network_name, tx_hash
@@ -260,7 +269,8 @@ impl SorobanHistoryProvider {
     fn parse_timestamp(ledger_close_time: Option<i64>) -> String {
         if let Some(timestamp) = ledger_close_time {
             // Stellar timestamps are Unix epoch seconds
-            let system_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(timestamp as u64);
+            let system_time =
+                SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(timestamp as u64);
             let datetime = chrono::DateTime::<Utc>::from(system_time);
             return datetime.to_rfc3339();
         }
@@ -298,7 +308,7 @@ impl HistoryProvider for SorobanHistoryProvider {
         // 2. Filter for xlm-ns contract IDs
         // 3. Parse contract events and classify by type
         // 4. Return normalized HistoryEvent objects
-        
+
         // For MVP, return sample events
         Ok(self.create_sample_events(address, limit))
     }
@@ -310,7 +320,7 @@ impl HistoryProvider for SorobanHistoryProvider {
     ) -> anyhow::Result<Vec<HistoryEvent>> {
         // TODO: Similar to address_history but filters by domain name
         // Would need to query events and parse domain names from event data
-        
+
         // For MVP, return sample events
         Ok(self.create_sample_events(name, limit))
     }
@@ -351,7 +361,10 @@ fn format_human_output(events: &[HistoryEvent]) -> String {
             output.push_str(&format!("Fee: {} XLM\n", fee));
         }
 
-        output.push_str(&format!("Tx: {}\n", &event.tx_hash[..event.tx_hash.len().min(12)]));
+        output.push_str(&format!(
+            "Tx: {}\n",
+            &event.tx_hash[..event.tx_hash.len().min(12)]
+        ));
         output.push_str(&format!("Ledger: {}\n", event.ledger));
         output.push_str(&"-".repeat(80));
     }
@@ -369,8 +382,7 @@ pub async fn run_history(
 ) -> anyhow::Result<()> {
     // Validate address if provided
     if let Some(addr) = address {
-        validate_account_address(addr)
-            .map_err(|e| anyhow!("Invalid Stellar address: {}", e))?;
+        validate_account_address(addr).map_err(|e| anyhow!("Invalid Stellar address: {}", e))?;
     }
 
     // Ensure we have either address or name
@@ -463,14 +475,16 @@ pub async fn run_history(
             println!("{}", format_human_output(&events));
         }
         OutputFormat::Json => {
-            let json = serde_json::to_value(&events)
-                .context("Failed to serialize events to JSON")?;
+            let json =
+                serde_json::to_value(&events).context("Failed to serialize events to JSON")?;
             println!("{}", serde_json::to_string_pretty(&json)?);
         }
         OutputFormat::Csv => {
             // For CSV, output header then rows
             if !events.is_empty() {
-                println!("timestamp,type,name,owner,counterparty,amount,fee,tx_hash,ledger,explorer_url");
+                println!(
+                    "timestamp,type,name,owner,counterparty,amount,fee,tx_hash,ledger,explorer_url"
+                );
                 for event in &events {
                     println!(
                         "{},{},{},{},{},{},{},{},{},{}",
