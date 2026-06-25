@@ -136,20 +136,6 @@ enum Commands {
     /// Manage configuration files and validation.
     #[command(subcommand)]
     Config(ConfigCommands),
-    /// Inspect historical transactions involving xlm-ns domains and addresses.
-    History {
-        /// Stellar address to inspect (if not specified, must use --name)
-        address: Option<String>,
-        /// Domain name to filter by (e.g., alice.xlm)
-        #[arg(long)]
-        name: Option<String>,
-        /// Maximum number of events to return (default 50, max 1000)
-        #[arg(long, default_value_t = 50)]
-        limit: usize,
-        /// Skip cache and fetch fresh data
-        #[arg(long)]
-        no_cache: bool,
-    },
     /// Show registration details for a single name.
     Whois {
         /// Name to inspect
@@ -528,22 +514,6 @@ async fn run() -> anyhow::Result<()> {
             }
         },
         Commands::Whois { name } => commands::whois::run_whois(config, cli.output, &name).await,
-        Commands::History {
-            address,
-            name,
-            limit,
-            no_cache,
-        } => {
-            commands::history::run_history(
-                config,
-                address.as_deref(),
-                name.as_deref(),
-                limit,
-                no_cache,
-                cli.output,
-            )
-            .await
-        }
         Commands::Portfolio {
             owner,
             batch_size,
@@ -933,7 +903,6 @@ fn validate_contract_policy(
         Commands::Availability { .. } => ("availability", &[ContractKind::Registry], &[]),
         // Healthcheck is purely informational: all contract flags are allowed
         // (they are reflected in the output) and none are required.
-        Commands::History { .. } => ("history", &[], &[]),
         Commands::Healthcheck => (
             "healthcheck",
             &[

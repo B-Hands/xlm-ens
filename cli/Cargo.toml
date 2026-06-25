@@ -6,8 +6,6 @@ version.workspace = true
 
 [dependencies]
 anyhow = "1.0"
-async-trait = "0.1"
-chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 csv = "1.3"

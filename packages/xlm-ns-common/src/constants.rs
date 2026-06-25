@@ -9,4 +9,3 @@ pub const MAX_TEXT_RECORDS: usize = 16;
 pub const MAX_TEXT_RECORD_VALUE_LENGTH: usize = 256;
 pub const MAX_METADATA_URI_LENGTH: usize = 256;
 pub const MAX_CHAIN_NAME_LENGTH: usize = 32;
-pub const MAX_SUBDOMAIN_DEPTH: usize = 3; // max non-TLD labels: a.b.c.xlm

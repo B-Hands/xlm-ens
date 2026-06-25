@@ -97,7 +97,7 @@ fn test_transfer_invalidates_resolver_authority() {
     let resolver = ResolverContractClient::new(&env, &resolver_id);
 
     // Wire the resolver to the registry for live canonical ownership checks
-    resolver.initialize(&registry_id, &Address::generate(&env));
+    resolver.initialize(&registry_id);
 
     let alice = Address::generate(&env);
     let bob = Address::generate(&env);

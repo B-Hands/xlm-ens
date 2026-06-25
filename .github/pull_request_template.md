@@ -27,7 +27,7 @@ Closes #<!-- issue number -->
 - [ ] `cargo test --workspace` passes
 - [ ] `cargo fmt --all --check` passes
 - [ ] `cargo clippy --workspace -- -D warnings` passes
-- [ ] Contract changes: `cargo build --release --target wasm32v1-none` succeeds
+- [ ] Contract changes: `cargo build --release --target wasm32-unknown-unknown` succeeds
 - [ ] New functionality covered by tests or snapshots
 - [ ] Manually verified on testnet (for contract / CLI changes)
 

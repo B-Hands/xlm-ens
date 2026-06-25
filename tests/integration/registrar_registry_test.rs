@@ -42,7 +42,7 @@ mod registrar_registry_integration {
         let registry = RegistryContractClient::new(&env, &registry_id);
 
         // Wire the registrar to the registry.
-        registrar.initialize(&registry_id, &Address::generate(&env));
+        registrar.initialize(&registry_id);
 
         (env, registrar, registry)
     }

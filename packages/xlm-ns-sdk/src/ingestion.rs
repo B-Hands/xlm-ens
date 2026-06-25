@@ -652,7 +652,7 @@ impl<T: Send> RemoteLedgerSource<T> for RpcLedgersRemoteSource<T> {
                 "RPC fallback returned no ledgers starting at {start_ledger}"
             ))
         })?;
-        self.map_ledger(ledger)
+        (self.mapper)(ledger)
     }
 }
 

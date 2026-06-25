@@ -3,8 +3,13 @@ mod events;
 mod test;
 
 use soroban_sdk::{
+<<<<<<< HEAD
+    contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, Address,
+    Bytes, Env, String, Vec,
+=======
     contract, contracterror, contractevent, contractimpl, contracttype, Address, Bytes, BytesN,
     Env, IntoVal, String, Symbol, Vec,
+>>>>>>> upstream/main
 };
 use xlm_ns_common::RegistryEntry;
 
@@ -14,6 +19,7 @@ pub struct TokenRecord {
     pub owner: Address,
     pub approved: Option<Address>,
     pub metadata_uri: Option<String>,
+    pub expires_at: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -61,6 +67,7 @@ pub enum NftError {
 pub const CONTRACT_VERSION: u32 = 1;
 
 #[contractevent]
+#[contracttype]
 pub struct ContractUpgraded {
     pub old_version: u32,
     pub new_version: u32,
@@ -94,11 +101,7 @@ impl NftContract {
             .unwrap_or(CONTRACT_VERSION)
     }
 
-    pub fn upgrade(
-        env: Env,
-        new_wasm_hash: BytesN<32>,
-        migration_data: Bytes,
-    ) -> Result<(), NftError> {
+    pub fn upgrade(env: Env, new_wasm_hash: Bytes, migration_data: Bytes) -> Result<(), NftError> {
         let admin: Address = env
             .storage()
             .instance()
@@ -117,16 +120,22 @@ impl NftContract {
             .persistent()
             .set(&DataKey::ContractVersion, &target_version);
 
-        ContractUpgraded {
-            old_version: current_version,
-            new_version: target_version,
-            admin,
-        }
-        .publish(&env);
+        env.events().publish(
+            (symbol_short!("nft"), symbol_short!("upgraded")),
+            ContractUpgraded {
+                old_version: current_version,
+                new_version: target_version,
+                admin,
+            },
+        );
 
+<<<<<<< HEAD
+        env.deployer().update_current_contract_wasm(new_wasm_hash.to_bytes());
+=======
         env.deployer()
             .update_current_contract_wasm(new_wasm_hash.to_bytes());
         env.deployer().update_current_contract_wasm(new_wasm_hash);
+>>>>>>> upstream/main
 
         Ok(())
     }
@@ -150,7 +159,15 @@ impl NftContract {
         token_id: String,
         owner: Address,
         metadata_uri: Option<String>,
+        expires_at: u64,
     ) -> Result<(), NftError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(NftError::Unauthorized)?;
+        admin.require_auth();
+
         let key = DataKey::Token(token_id.clone());
         if env.storage().persistent().has(&key) {
             return Err(NftError::AlreadyMinted);
@@ -159,6 +176,7 @@ impl NftContract {
             owner: owner.clone(),
             approved: None,
             metadata_uri,
+            expires_at,
         };
         env.storage().persistent().set(&key, &record);
         append_token_id(&env, &token_id);
@@ -336,6 +354,75 @@ impl NftContract {
             .persistent()
             .get::<_, TokenRecord>(&DataKey::Token(token_id))
             .and_then(|record| record.metadata_uri)
+    }
+
+    pub fn burn(env: Env, token_id: String) -> Result<(), NftError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(NftError::Unauthorized)?;
+        admin.require_auth();
+
+        let record = get_token(&env, &token_id)?;
+        env.storage()
+            .persistent()
+            .remove(&DataKey::Token(token_id.clone()));
+        remove_owner_token(&env, &record.owner, &token_id);
+
+        let mut all_tokens = token_ids(&env);
+        if let Some(index) = all_tokens.iter().position(|t| t == token_id) {
+            all_tokens.remove(index as u32);
+        }
+        env.storage()
+            .persistent()
+            .set(&DataKey::TokenIds, &all_tokens);
+
+        events::burn(&env, admin, token_id);
+        Ok(())
+    }
+
+    pub fn sync_expiry(
+        env: Env,
+        token_id: String,
+        new_expiry: u64,
+    ) -> Result<(), NftError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(NftError::Unauthorized)?;
+        admin.require_auth();
+
+        let mut record = get_token(&env, &token_id)?;
+        record.expires_at = new_expiry;
+        env.storage()
+            .persistent()
+            .set(&DataKey::Token(token_id.clone()), &record);
+        Ok(())
+    }
+
+    pub fn sync_owner(
+        env: Env,
+        token_id: String,
+        new_owner: Address,
+    ) -> Result<(), NftError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(NftError::Unauthorized)?;
+        admin.require_auth();
+
+        let mut record = get_token(&env, &token_id)?;
+        let old_owner = record.owner.clone();
+        record.owner = new_owner.clone();
+        env.storage()
+            .persistent()
+            .set(&DataKey::Token(token_id.clone()), &record);
+        reindex_owner_token(&env, &old_owner, &new_owner, &token_id);
+        events::transfer(&env, old_owner, new_owner, token_id);
+        Ok(())
     }
 }
 
