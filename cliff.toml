@@ -1,0 +1,131 @@
+# git-cliff configuration for xlm-ens
+# https://git-cliff.org/docs/configuration
+
+[changelog]
+# Header is prepended once at the top of the generated CHANGELOG.
+header = """
+# Changelog
+
+All notable changes to xlm-ens are documented in this file.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+Each contract tracks its own on-chain `CONTRACT_VERSION` constant independently
+from the Cargo package version. The Cargo version reflects the client-facing API
+(SDK, CLI); the contract version gates on-chain storage migrations.
+
+"""
+
+# Template for each release section.
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}] — {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group }}
+{% for commit in commits | sort(attribute="message") %}\
+{% if commit.breaking %}\
+- **BREAKING** {{ commit.message | upper_first }}\
+{% if commit.body %}
+
+  {{ commit.body | indent(prefix="  ") }}
+{% endif %}\
+{% else %}\
+- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | upper_first }}\
+{% if commit.body %}
+
+  {{ commit.body | indent(prefix="  ") }}
+{% endif %}\
+{% endif %}\
+{% endfor %}
+{% endfor %}\n
+"""
+
+# Rendered after the last release body.
+footer = """
+{% for release in releases -%}
+{% if release.version %}\
+[{{ release.version | trim_start_matches(pat="v") }}]: \
+  https://github.com/Soroban-Ens/xlm-ens/releases/tag/{{ release.version }}
+{% else %}\
+[Unreleased]: https://github.com/Soroban-Ens/xlm-ens/compare/\
+{{ releases | filter(attribute="version") | first | get(key="version") }}...HEAD
+{% endif %}\
+{% endfor %}
+"""
+
+# Trim whitespace in the rendered output.
+trim = true
+
+# Output path (used by the release workflow; can be overridden via --output).
+output = "CHANGELOG.md"
+
+[git]
+# Parse commits following the Conventional Commits specification.
+conventional_commits = true
+
+# Drop commits that do not match the conventional format.
+filter_unconventional = true
+
+# Split a commit message body on "\n\n" to extract footer trailers.
+split_commits = false
+
+# Regex for preprocessing commit messages before parsing.
+commit_preprocessors = [
+  # Replace issue/PR references with links.
+  { pattern = '#(\d+)', replace = "[#${1}](https://github.com/Soroban-Ens/xlm-ens/issues/${1})" },
+  # Strip leading/trailing whitespace.
+  { pattern = '^ +| +$', replace = "" },
+]
+
+# Regex to decide which commits are included in the changelog.
+commit_parsers = [
+  # Breaking changes always appear first regardless of type.
+  { message = "^.*!:", group = "Breaking Changes", breaking = true },
+  { body = ".*BREAKING CHANGE.*", group = "Breaking Changes", breaking = true },
+
+  # Standard conventional commit types.
+  { message = "^feat",     group = "Features" },
+  { message = "^fix",      group = "Bug Fixes" },
+  { message = "^perf",     group = "Performance" },
+  { message = "^refactor", group = "Refactoring" },
+  { message = "^docs",     group = "Documentation" },
+  { message = "^test",     group = "Testing" },
+  { message = "^build",    group = "Build" },
+  { message = "^ci",       group = "CI/CD" },
+  { message = "^chore",    group = "Chores" },
+  { message = "^revert",   group = "Reverts" },
+  { message = "^security", group = "Security" },
+
+  # Skip purely cosmetic commits.
+  { message = "^style",    skip = true },
+  { message = "^Merge",    skip = true },
+  { message = "^Initial commit", skip = true },
+]
+
+# Only include commits reachable from the latest tag onward (per release).
+filter_commits = false
+
+# Use the tag as the release version.
+tag_pattern = "v[0-9]+\\.[0-9]+\\.[0-9]+"
+
+# Ignore pre-release tags when computing the previous tag.
+skip_tags = "v.*-(alpha|beta|rc)\\.[0-9]+"
+
+# Do not error when there are no releases to process.
+ignore_tags = ""
+
+# Sort releases newest-first.
+sort_commits = "newest"
+
+# Protect against accidentally publishing the wrong version.
+protect_breaking_commits = false
+
+[bump]
+# Allow git-cliff --bump to compute the next version automatically.
+features_always_bump_minor = true
+breaking_always_bump_major = true
+custom_major_increment_regex = "^.*!:|BREAKING CHANGE"

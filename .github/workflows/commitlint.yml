@@ -1,0 +1,52 @@
+name: Commit Lint
+
+# Enforces Conventional Commits on every PR so that git-cliff can generate a
+# meaningful CHANGELOG automatically during releases.
+#
+# Convention reference: https://www.conventionalcommits.org/
+# Allowed types: feat, fix, perf, refactor, docs, test, build, ci, chore,
+#                revert, security, style
+#
+# PRs labelled 'commitlint-exempt' skip the check entirely (use sparingly).
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  commitlint:
+    name: Lint commit messages
+    runs-on: ubuntu-latest
+    # Allow repo maintainers to bypass the check via a PR label.
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'commitlint-exempt') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Fetch enough history to examine every commit in the PR.
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        run: git fetch origin ${{ github.base_ref }}
+
+      - name: Lint PR title (must be a valid conventional commit)
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          # The PR title becomes the squash-merge commit message, so it must
+          # satisfy the conventional commit format on its own.
+          bash scripts/check-commit-message.sh "$PR_TITLE"
+
+      - name: Lint all commits in the PR
+        run: |
+          BASE=$(git merge-base origin/${{ github.base_ref }} HEAD)
+          # Walk every commit between the merge-base and HEAD.
+          git log --format="%s" "${BASE}..HEAD" | while IFS= read -r msg; do
+            # Skip empty lines and merge commits.
+            [[ -z "$msg" || "$msg" == Merge* ]] && continue
+            bash scripts/check-commit-message.sh "$msg"
+          done
