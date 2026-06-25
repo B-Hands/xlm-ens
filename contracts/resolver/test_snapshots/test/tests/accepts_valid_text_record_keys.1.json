@@ -75,18 +75,18 @@
                       "map": [
                         {
                           "key": {
-                            "string": "custom:org.did-key_1"
+                            "string": "com.twitter"
                           },
                           "val": {
-                            "string": "did:x"
+                            "string": "@alice"
                           }
                         },
                         {
                           "key": {
-                            "string": "twitter"
+                            "string": "org.did_key-1"
                           },
                           "val": {
-                            "string": "@alice"
+                            "string": "did:x"
                           }
                         },
                         {

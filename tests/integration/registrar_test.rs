@@ -29,7 +29,7 @@ fn renewal_syncs_expiry_and_grace_with_registry() {
     let registrar = RegistrarContractClient::new(&env, &registrar_id);
     let registry = RegistryContractClient::new(&env, &registry_id);
 
-    registrar.initialize(&registry_id, &Address::generate(&env));
+    registrar.initialize(&registry_id);
 
     let owner = Address::generate(&env);
     let label = String::from_str(&env, "alice");
@@ -70,7 +70,7 @@ fn renewal_during_grace_period() {
     let registrar = RegistrarContractClient::new(&env, &registrar_id);
     let registry = RegistryContractClient::new(&env, &registry_id);
 
-    registrar.initialize(&registry_id, &Address::generate(&env));
+    registrar.initialize(&registry_id);
 
     let owner = Address::generate(&env);
     let label = String::from_str(&env, "grace");
@@ -107,7 +107,7 @@ fn unauthorized_renewal_fails() {
     let registrar = RegistrarContractClient::new(&env, &registrar_id);
     let registry = RegistryContractClient::new(&env, &registry_id);
 
-    registrar.initialize(&registry_id, &Address::generate(&env));
+    registrar.initialize(&registry_id);
 
     let owner = Address::generate(&env);
     let intruder = Address::generate(&env);

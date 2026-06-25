@@ -33,6 +33,3 @@ pub use ingestion::{
 pub use types::{
     RegisterResult, RegistrationReceipt, RenewResult, RenewalReceipt, SimulationResult,
 };
-pub use xlm_ns_common::name_validation::{
-    validate_name, validate_name_with_reserved, NameValidationError, ValidatedName,
-};

@@ -31,3 +31,8 @@ pub fn transfer(env: &Env, from: Address, to: Address, token_id: String) {
     env.events()
         .publish((symbol_short!("transfer"), from, to), token_id);
 }
+
+pub fn burn(env: &Env, owner: Address, token_id: String) {
+    env.events()
+        .publish((symbol_short!("burn"), owner), token_id);
+}

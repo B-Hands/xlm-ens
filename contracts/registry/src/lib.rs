@@ -2,7 +2,7 @@ mod test;
 
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, Address,
-    Bytes, BytesN, Env, String, Vec,
+    Bytes, Env, String, Vec,
 };
 use xlm_ns_common::soroban::validate_fqdn_soroban;
 use xlm_ns_common::time::{is_active_at, is_claimable_at};
@@ -13,6 +13,7 @@ pub const STORAGE_SCHEMA_VERSION: u32 = 1;
 pub const CONTRACT_VERSION: u32 = 1;
 
 #[contractevent]
+#[contracttype]
 pub struct ContractUpgraded {
     pub old_version: u32,
     pub new_version: u32,
@@ -33,6 +34,8 @@ pub struct RegistryEntry {
     pub grace_period_ends_at: u64,
     pub transfer_count: u32,
 }
+
+use xlm_ns_common::time::{is_active_at, is_claimable_at};
 
 impl RegistryEntry {
     fn is_active_at(&self, now_unix: u64) -> bool {
@@ -65,6 +68,7 @@ enum DataKey {
     Entry(String),
     OwnerNames(Address),
     Admin,
+    NftContract,
     ContractVersion,
 }
 
@@ -86,6 +90,21 @@ pub enum RegistryError {
 
 #[contract]
 pub struct RegistryContract;
+
+// NFT contract client interface needed for cross-contract calls.
+#[contractclient(name = "NftClient")]
+pub trait Nft {
+    fn mint(
+        env: Env,
+        name: String,
+        owner: Address,
+        metadata_uri: Option<String>,
+        expires_at: u64,
+    );
+    fn sync_owner(env: Env, name: String, new_owner: Address);
+    fn sync_expiry(env: Env, name: String, new_expiry: u64);
+    fn burn(env: Env, name: String);
+}
 
 #[contractimpl]
 impl RegistryContract {
@@ -111,9 +130,22 @@ impl RegistryContract {
             .unwrap_or(CONTRACT_VERSION)
     }
 
+    pub fn set_nft_contract(env: Env, nft_contract: Address) -> Result<(), RegistryError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(RegistryError::Unauthorized)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::NftContract, &nft_contract);
+        Ok(())
+    }
+
     pub fn upgrade(
         env: Env,
-        new_wasm_hash: BytesN<32>,
+        new_wasm_hash: Bytes,
         migration_data: Bytes,
     ) -> Result<(), RegistryError> {
         let admin: Address = env
@@ -134,12 +166,14 @@ impl RegistryContract {
             .persistent()
             .set(&DataKey::ContractVersion, &target_version);
 
-        ContractUpgraded {
-            old_version: current_version,
-            new_version: target_version,
-            admin,
-        }
-        .publish(&env);
+        env.events().publish(
+            (symbol_short!("contract"), symbol_short!("upgraded")),
+            ContractUpgraded {
+                old_version: current_version,
+                new_version: target_version,
+                admin,
+            },
+        );
 
         env.deployer().update_current_contract_wasm(new_wasm_hash);
 
@@ -202,6 +236,11 @@ impl RegistryContract {
         };
         env.storage().persistent().set(&key, &entry);
         add_owner_name(&env, &owner, &name);
+
+        if let Some(nft_client) = get_nft_client(&env) {
+            nft_client.mint(&name, &owner, &metadata_uri, &expires_at);
+        }
+
         Ok(())
     }
 
@@ -265,8 +304,13 @@ impl RegistryContract {
         add_owner_name(&env, &new_owner, &name);
         env.events().publish(
             (symbol_short!("name"), symbol_short!("transfer")),
-            (name, old_owner, new_owner),
+            (name.clone(), old_owner, new_owner.clone()),
         );
+
+        if let Some(nft_client) = get_nft_client(&env) {
+            nft_client.sync_owner(&name, &new_owner);
+        }
+
         Ok(())
     }
 
@@ -349,6 +393,11 @@ impl RegistryContract {
         entry.expires_at = expires_at;
         entry.grace_period_ends_at = grace_period_ends_at;
         put_entry(&env, &name, &entry);
+
+        if let Some(nft_client) = get_nft_client(&env) {
+            nft_client.sync_expiry(&name, &expires_at);
+        }
+
         Ok(())
     }
 
@@ -409,6 +458,10 @@ impl RegistryContract {
             .persistent()
             .remove(&DataKey::Entry(name.clone()));
 
+        if let Some(nft_client) = get_nft_client(&env) {
+            nft_client.burn(&name);
+        }
+
         env.events().publish(
             (symbol_short!("name"), symbol_short!("burn")),
             (name, entry.owner),
@@ -450,6 +503,15 @@ fn get_entry(env: &Env, name: &String) -> Result<RegistryEntry, RegistryError> {
         .persistent()
         .get(&DataKey::Entry(name.clone()))
         .ok_or(RegistryError::NotFound)
+}
+
+fn get_nft_client(env: &Env) -> Option<NftClient> {
+    env.storage()
+        .instance()
+        .get::<_, Address>(&DataKey::NftContract)
+        .map(|addr| {
+            NftClient::new(env, &addr)
+        })
 }
 
 fn put_entry(env: &Env, name: &String, entry: &RegistryEntry) {

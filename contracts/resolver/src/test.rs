@@ -19,7 +19,7 @@ mod tests {
         client.set_text_record(
             &name,
             &owner,
-            &String::from_str(&env, "twitter"),
+            &String::from_str(&env, "com.twitter"),
             &String::from_str(&env, "@timmy"),
             &101,
         );
@@ -32,7 +32,9 @@ mod tests {
             Some(address.clone())
         );
         assert_eq!(
-            record.text_records.get(String::from_str(&env, "twitter")),
+            record
+                .text_records
+                .get(String::from_str(&env, "com.twitter")),
             Some(String::from_str(&env, "@timmy"))
         );
         assert_eq!(record.updated_at, 101);
@@ -74,7 +76,7 @@ mod tests {
             client.set_text_record(
                 &name,
                 &intruder,
-                &String::from_str(&env, "twitter"),
+                &String::from_str(&env, "com.twitter"),
                 &String::from_str(&env, "@timmy"),
                 &101,
             );
@@ -123,7 +125,7 @@ mod tests {
             client.set_text_record(
                 &name,
                 &owner,
-                &String::from_str(&env, &format!("custom:key-{idx}")),
+                &String::from_str(&env, &format!("key-{idx}")),
                 &String::from_str(&env, &format!("value-{idx}")),
                 &(101 + idx as u64),
             );
@@ -132,7 +134,7 @@ mod tests {
         client.set_text_record(
             &name,
             &owner,
-            &String::from_str(&env, "custom:key-0"),
+            &String::from_str(&env, "key-0"),
             &String::from_str(&env, "updated"),
             &500,
         );
@@ -142,7 +144,7 @@ mod tests {
         assert_eq!(
             updated_record
                 .text_records
-                .get(String::from_str(&env, "custom:key-0")),
+                .get(String::from_str(&env, "key-0")),
             Some(String::from_str(&env, "updated"))
         );
         assert_eq!(updated_record.updated_at, 500);
@@ -151,7 +153,7 @@ mod tests {
             client.set_text_record(
                 &name,
                 &owner,
-                &String::from_str(&env, "custom:overflow"),
+                &String::from_str(&env, "overflow"),
                 &String::from_str(&env, "value"),
                 &501,
             );
@@ -224,7 +226,7 @@ mod tests {
         client.set_text_record(
             &name,
             &owner,
-            &String::from_str(&env, "twitter"),
+            &String::from_str(&env, "com.twitter"),
             &String::from_str(&env, "@timmy"),
             &101,
         );
@@ -238,7 +240,9 @@ mod tests {
         );
         assert_eq!(record.text_records.len(), 1);
         assert_eq!(
-            record.text_records.get(String::from_str(&env, "twitter")),
+            record
+                .text_records
+                .get(String::from_str(&env, "com.twitter")),
             Some(String::from_str(&env, "@timmy"))
         );
         assert_eq!(record.updated_at, 102);
@@ -262,7 +266,7 @@ mod tests {
         client.set_text_record(
             &name,
             &owner,
-            &String::from_str(&env, "custom:key1"),
+            &String::from_str(&env, "key1"),
             &valid_value,
             &101,
         );
@@ -276,7 +280,7 @@ mod tests {
             client.set_text_record(
                 &name,
                 &owner,
-                &String::from_str(&env, "custom:key2"),
+                &String::from_str(&env, "key2"),
                 &oversized_value,
                 &102,
             );
@@ -394,7 +398,7 @@ mod tests {
         let owner = Address::generate(&env);
         let name = String::from_str(&env, "alice.xlm");
         client.set_record(&name, &owner, &String::from_str(&env, "GABC"), &100);
-        // standard schema key
+        // plain lowercase
         client.set_text_record(
             &name,
             &owner,
@@ -402,19 +406,19 @@ mod tests {
             &String::from_str(&env, "https://x"),
             &101,
         );
-        // standard schema key
+        // namespaced with dot
         client.set_text_record(
             &name,
             &owner,
-            &String::from_str(&env, "twitter"),
+            &String::from_str(&env, "com.twitter"),
             &String::from_str(&env, "@alice"),
             &102,
         );
-        // custom prefix with dot, dash, underscore in suffix
+        // dash and underscore
         client.set_text_record(
             &name,
             &owner,
-            &String::from_str(&env, "custom:org.did-key_1"),
+            &String::from_str(&env, "org.did_key-1"),
             &String::from_str(&env, "did:x"),
             &103,
         );
@@ -422,32 +426,23 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_uppercase_key_to_lowercase_on_store() {
+    fn rejects_uppercase_text_record_key() {
         let env = Env::default();
         let contract_id = env.register(ResolverContract, ());
         let client = ResolverContractClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
         let name = String::from_str(&env, "alice.xlm");
         client.set_record(&name, &owner, &String::from_str(&env, "GABC"), &100);
-        // "Twitter" normalizes to "twitter" which is a standard schema key
-        client.set_text_record(
-            &name,
-            &owner,
-            &String::from_str(&env, "Twitter"),
-            &String::from_str(&env, "@alice"),
-            &101,
-        );
-        let record = client.resolve(&name).unwrap();
-        // stored under normalized lowercase key
-        assert_eq!(
-            record.text_records.get(String::from_str(&env, "twitter")),
-            Some(String::from_str(&env, "@alice"))
-        );
-        // not stored under the original mixed-case key
-        assert_eq!(
-            record.text_records.get(String::from_str(&env, "Twitter")),
-            None
-        );
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            client.set_text_record(
+                &name,
+                &owner,
+                &String::from_str(&env, "Twitter"),
+                &String::from_str(&env, "@alice"),
+                &101,
+            );
+        }));
+        assert!(result.is_err(), "uppercase key must be rejected");
     }
 
     #[test]
@@ -615,7 +610,7 @@ mod tests {
                     String::from_str(&env, "https://alice.example"),
                 ),
                 BatchOp::SetText(
-                    String::from_str(&env, "twitter"),
+                    String::from_str(&env, "com.twitter"),
                     String::from_str(&env, "@alice"),
                 ),
             ],
@@ -705,7 +700,7 @@ mod tests {
                     String::from_str(&env, "https://alice.example"),
                 ),
                 BatchOp::SetText(
-                    String::from_str(&env, "BadKey"), // normalizes to "badkey", not in schema
+                    String::from_str(&env, "BadKey"), // uppercase — invalid
                     String::from_str(&env, "value"),
                 ),
             ],
@@ -844,7 +839,7 @@ mod tests {
             client.set_text_record(
                 &name,
                 &owner,
-                &String::from_str(&env, &format!("custom:key-{idx}")),
+                &String::from_str(&env, &format!("key-{idx}")),
                 &String::from_str(&env, &format!("value-{idx}")),
                 &(101 + idx as u64),
             );
@@ -859,7 +854,7 @@ mod tests {
             client.set_text_record(
                 &name,
                 &owner,
-                &String::from_str(&env, "custom:overflow-key"),
+                &String::from_str(&env, "overflow-key"),
                 &String::from_str(&env, "v"),
                 &200,
             );
@@ -870,16 +865,14 @@ mod tests {
         client.set_text_record(
             &name,
             &owner,
-            &String::from_str(&env, "custom:key-0"),
+            &String::from_str(&env, "key-0"),
             &String::from_str(&env, "updated"),
             &201,
         );
         let record = client.resolve(&name).unwrap();
         assert_eq!(record.text_records.len(), MAX_TEXT_RECORDS as u32);
         assert_eq!(
-            record
-                .text_records
-                .get(String::from_str(&env, "custom:key-0")),
+            record.text_records.get(String::from_str(&env, "key-0")),
             Some(String::from_str(&env, "updated"))
         );
     }
@@ -897,7 +890,7 @@ mod tests {
         client.set_record(&name, &owner, &String::from_str(&env, "G0000"), &100);
 
         let steps: &[(&str, &[(&str, &str)])] = &[
-            ("GAAA", &[("url", "https://a"), ("twitter", "@a1")]),
+            ("GAAA", &[("url", "https://a"), ("com.twitter", "@a1")]),
             ("GBBB", &[("url", "https://b"), ("email", "b@b.com")]),
             ("GCCC", &[("email", "c@c.com")]),
         ];
@@ -931,177 +924,5 @@ mod tests {
         let contract_id = env.register(ResolverContract, ());
         let client = ResolverContractClient::new(&env, &contract_id);
         assert_eq!(client.version(), 1);
-    }
-
-    // -----------------------------------------------------------------------
-    // #431: Record key schema validation tests
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn get_allowed_keys_returns_nine_standard_keys() {
-        let env = Env::default();
-        let contract_id = env.register(ResolverContract, ());
-        let client = ResolverContractClient::new(&env, &contract_id);
-
-        let keys = client.get_allowed_keys();
-        assert_eq!(keys.len(), 9);
-        for key in &[
-            "email",
-            "url",
-            "avatar",
-            "description",
-            "twitter",
-            "github",
-            "discord",
-            "telegram",
-            "nostr",
-        ] {
-            assert!(
-                keys.iter().any(|k| k == String::from_str(&env, key)),
-                "expected standard key '{key}' to be in allowed keys"
-            );
-        }
-    }
-
-    #[test]
-    fn rejects_unknown_key_not_in_schema() {
-        let env = Env::default();
-        let contract_id = env.register(ResolverContract, ());
-        let client = ResolverContractClient::new(&env, &contract_id);
-        let owner = Address::generate(&env);
-        let name = String::from_str(&env, "alice.xlm");
-        client.set_record(&name, &owner, &String::from_str(&env, "GABC"), &100);
-
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            client.set_text_record(
-                &name,
-                &owner,
-                &String::from_str(&env, "linkedin"), // valid format, not in schema
-                &String::from_str(&env, "alice123"),
-                &101,
-            );
-        }));
-        assert!(result.is_err(), "key not in schema must be rejected");
-        let record = client.resolve(&name).unwrap();
-        assert_eq!(record.text_records.len(), 0);
-    }
-
-    #[test]
-    fn accepts_custom_prefixed_keys() {
-        let env = Env::default();
-        let contract_id = env.register(ResolverContract, ());
-        let client = ResolverContractClient::new(&env, &contract_id);
-        let owner = Address::generate(&env);
-        let name = String::from_str(&env, "alice.xlm");
-        client.set_record(&name, &owner, &String::from_str(&env, "GABC"), &100);
-
-        client.set_text_record(
-            &name,
-            &owner,
-            &String::from_str(&env, "custom:linkedin"),
-            &String::from_str(&env, "alice123"),
-            &101,
-        );
-        client.set_text_record(
-            &name,
-            &owner,
-            &String::from_str(&env, "custom:com.myapp"),
-            &String::from_str(&env, "val"),
-            &102,
-        );
-
-        let record = client.resolve(&name).unwrap();
-        assert_eq!(record.text_records.len(), 2);
-        assert_eq!(
-            record
-                .text_records
-                .get(String::from_str(&env, "custom:linkedin")),
-            Some(String::from_str(&env, "alice123"))
-        );
-    }
-
-    #[test]
-    fn rejects_custom_prefix_with_invalid_suffix_char() {
-        let env = Env::default();
-        let contract_id = env.register(ResolverContract, ());
-        let client = ResolverContractClient::new(&env, &contract_id);
-        let owner = Address::generate(&env);
-        let name = String::from_str(&env, "alice.xlm");
-        client.set_record(&name, &owner, &String::from_str(&env, "GABC"), &100);
-
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            client.set_text_record(
-                &name,
-                &owner,
-                &String::from_str(&env, "custom:bad key"), // space in suffix
-                &String::from_str(&env, "val"),
-                &101,
-            );
-        }));
-        assert!(
-            result.is_err(),
-            "custom key with space in suffix must be rejected"
-        );
-    }
-
-    #[test]
-    fn batch_set_skips_unknown_schema_key_with_partial_failure() {
-        let env = Env::default();
-        let contract_id = env.register(ResolverContract, ());
-        let client = ResolverContractClient::new(&env, &contract_id);
-        let owner = Address::generate(&env);
-        let name = String::from_str(&env, "alice.xlm");
-        client.set_record(&name, &owner, &String::from_str(&env, "GAAA"), &100);
-
-        let ops = Vec::from_array(
-            &env,
-            [
-                BatchOp::SetText(
-                    String::from_str(&env, "url"),
-                    String::from_str(&env, "https://alice.example"),
-                ),
-                BatchOp::SetText(
-                    String::from_str(&env, "linkedin"), // valid format, not in schema
-                    String::from_str(&env, "alice123"),
-                ),
-            ],
-        );
-
-        let applied = client.batch_set(&name, &owner, &ops, &200);
-        assert_eq!(applied, 1); // only "url" applied
-        let record = client.resolve(&name).unwrap();
-        assert_eq!(record.text_records.len(), 1);
-        assert_eq!(
-            record.text_records.get(String::from_str(&env, "linkedin")),
-            None
-        );
-    }
-
-    #[test]
-    fn admin_can_add_new_allowed_key() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let contract_id = env.register(ResolverContract, ());
-        let client = ResolverContractClient::new(&env, &contract_id);
-
-        let registry = Address::generate(&env);
-        let admin = Address::generate(&env);
-        client.initialize(&registry, &admin);
-
-        // "linkedin" is not in the default schema
-        let keys_before = client.get_allowed_keys();
-        assert!(!keys_before
-            .iter()
-            .any(|k| k == String::from_str(&env, "linkedin")));
-
-        client.add_allowed_key(&String::from_str(&env, "linkedin"));
-
-        let keys_after = client.get_allowed_keys();
-        assert!(keys_after
-            .iter()
-            .any(|k| k == String::from_str(&env, "linkedin")));
-        // Adding the same key again is idempotent
-        client.add_allowed_key(&String::from_str(&env, "linkedin"));
-        assert_eq!(client.get_allowed_keys().len(), keys_after.len());
     }
 }

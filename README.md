@@ -211,7 +211,7 @@ Shared validation currently enforces:
 ### Prerequisites
 
 - [Rust toolchain](https://rustup.rs/) (latest stable)
-- Wasm target: `rustup target add wasm32v1-none`
+- Wasm target: `rustup target add wasm32-unknown-unknown`
 - Soroban CLI (`cargo install --locked soroban-cli`)
 
 ### Bootstrap (recommended)

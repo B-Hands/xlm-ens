@@ -75,7 +75,7 @@
                       "map": [
                         {
                           "key": {
-                            "string": "twitter"
+                            "string": "com.twitter"
                           },
                           "val": {
                             "string": "@alice"

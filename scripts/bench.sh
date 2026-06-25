@@ -11,17 +11,17 @@
 # Usage:   scripts/bench.sh
 # Rerun after changes and diff the output to see relative cost trends.
 #
-# Requires: wasm32v1-none target.
+# Requires: wasm32-unknown-unknown target.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-WASM_DIR="target/wasm32v1-none/release"
+WASM_DIR="target/wasm32-unknown-unknown/release"
 CONTRACTS=(xlm_ns_registry xlm_ns_registrar xlm_ns_resolver xlm_ns_subdomain xlm_ns_auction xlm_ns_bridge xlm_ns_nft)
 
 echo "==> building all contracts (release, wasm32)"
-cargo build --release --target wasm32v1-none \
+cargo build --release --target wasm32-unknown-unknown \
   -p xlm-ns-registry -p xlm-ns-registrar -p xlm-ns-resolver \
   -p xlm-ns-subdomain -p xlm-ns-auction -p xlm-ns-bridge -p xlm-ns-nft
 

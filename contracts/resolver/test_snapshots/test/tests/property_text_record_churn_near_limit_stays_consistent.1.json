@@ -91,7 +91,7 @@
                       "map": [
                         {
                           "key": {
-                            "string": "custom:key-0"
+                            "string": "key-0"
                           },
                           "val": {
                             "string": "updated"
@@ -99,7 +99,7 @@
                         },
                         {
                           "key": {
-                            "string": "custom:key-1"
+                            "string": "key-1"
                           },
                           "val": {
                             "string": "value-1"
@@ -107,7 +107,7 @@
                         },
                         {
                           "key": {
-                            "string": "custom:key-10"
+                            "string": "key-10"
                           },
                           "val": {
                             "string": "value-10"
@@ -115,7 +115,7 @@
                         },
                         {
                           "key": {
-                            "string": "custom:key-11"
+                            "string": "key-11"
                           },
                           "val": {
                             "string": "value-11"
@@ -123,7 +123,7 @@
                         },
                         {
                           "key": {
-                            "string": "custom:key-12"
+                            "string": "key-12"
                           },
                           "val": {
                             "string": "value-12"
@@ -131,7 +131,7 @@
                         },
                         {
                           "key": {
-                            "string": "custom:key-13"
+                            "string": "key-13"
                           },
                           "val": {
                             "string": "value-13"
@@ -139,7 +139,7 @@
                         },
                         {
                           "key": {
-                            "string": "custom:key-14"
+                            "string": "key-14"
                           },
                           "val": {
                             "string": "value-14"
@@ -147,7 +147,7 @@
                         },
                         {
                           "key": {
-                            "string": "custom:key-15"
+                            "string": "key-15"
                           },
                           "val": {
                             "string": "value-15"
@@ -155,7 +155,7 @@
                         },
                         {
                           "key": {
-                            "string": "custom:key-2"
+                            "string": "key-2"
                           },
                           "val": {
                             "string": "value-2"
@@ -163,7 +163,7 @@
                         },
                         {
                           "key": {
-                            "string": "custom:key-3"
+                            "string": "key-3"
                           },
                           "val": {
                             "string": "value-3"
@@ -171,7 +171,7 @@
                         },
                         {
                           "key": {
-                            "string": "custom:key-4"
+                            "string": "key-4"
                           },
                           "val": {
                             "string": "value-4"
@@ -179,7 +179,7 @@
                         },
                         {
                           "key": {
-                            "string": "custom:key-5"
+                            "string": "key-5"
                           },
                           "val": {
                             "string": "value-5"
@@ -187,7 +187,7 @@
                         },
                         {
                           "key": {
-                            "string": "custom:key-6"
+                            "string": "key-6"
                           },
                           "val": {
                             "string": "value-6"
@@ -195,7 +195,7 @@
                         },
                         {
                           "key": {
-                            "string": "custom:key-7"
+                            "string": "key-7"
                           },
                           "val": {
                             "string": "value-7"
@@ -203,7 +203,7 @@
                         },
                         {
                           "key": {
-                            "string": "custom:key-8"
+                            "string": "key-8"
                           },
                           "val": {
                             "string": "value-8"
@@ -211,7 +211,7 @@
                         },
                         {
                           "key": {
-                            "string": "custom:key-9"
+                            "string": "key-9"
                           },
                           "val": {
                             "string": "value-9"
