@@ -100,3 +100,34 @@ impl SignerProfile {
         }
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct SigningKey {
+    pub keypair: stellar_sdk::SecretKey,
+    pub public_address: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum SigningKeyError {
+    InvalidSecret,
+}
+
+impl fmt::Display for SigningKeyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidSecret => write!(f, "invalid secret key"),
+        }
+    }
+}
+
+impl std::error::Error for SigningKeyError {}
+
+pub fn load_signing_key(secret: &str) -> Result<SigningKey, SigningKeyError> {
+    let keypair = stellar_sdk::SecretKey::from_str(secret)
+        .map_err(|_| SigningKeyError::InvalidSecret)?;
+    let public_address = keypair.public_key().to_string();
+    Ok(SigningKey {
+        keypair,
+        public_address,
+    })
+}

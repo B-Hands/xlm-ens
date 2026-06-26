@@ -148,6 +148,18 @@ impl NetworkConfig {
             ContractKind::Nft => self.nft_contract_id.as_deref(),
         }
     }
+
+    pub fn all_contract_ids(&self) -> Vec<(&'static str, Option<&String>)> {
+        vec![
+            ("registry", self.registry_contract_id.as_ref()),
+            ("registrar", self.registrar_contract_id.as_ref()),
+            ("resolver", self.resolver_contract_id.as_ref()),
+            ("auction", self.auction_contract_id.as_ref()),
+            ("bridge", self.bridge_contract_id.as_ref()),
+            ("subdomain", self.subdomain_contract_id.as_ref()),
+            ("nft", self.nft_contract_id.as_ref()),
+        ]
+    }
 }
 
 #[derive(Debug, Clone, Default)]

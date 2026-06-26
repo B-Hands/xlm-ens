@@ -338,6 +338,18 @@ enum ConfigCommands {
         /// Network to validate against.
         #[arg(long, default_value = "testnet")]
         network: String,
+        /// Interactively prompt to correct invalid values.
+        #[arg(long)]
+        fix: bool,
+    },
+    /// Show the current configuration.
+    Show {
+        /// Config file path. Falls back to the configured search path.
+        #[arg(long)]
+        path: Option<PathBuf>,
+        /// Network to show the configuration for.
+        #[arg(long, default_value = "testnet")]
+        network: String,
     },
 }
 
@@ -508,8 +520,17 @@ async fn run() -> anyhow::Result<()> {
             ConfigCommands::Edit { path, network } => {
                 commands::config::run_edit(path.or(cli.config.clone()), &network).await
             }
-            ConfigCommands::Validate { path, network } => {
-                commands::config::run_validate(path.or(cli.config.clone()), &network, cli.output)
+            ConfigCommands::Validate { path, network, fix } => {
+                commands::config::run_validate(
+                    path.or(cli.config.clone()),
+                    &network,
+                    cli.output,
+                    fix,
+                )
+                .await
+            }
+            ConfigCommands::Show { path, network } => {
+                commands::config::run_show(path.or(cli.config.clone()), &network, cli.output)
                     .await
             }
         },

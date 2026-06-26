@@ -82,11 +82,90 @@ pub async fn run_validate(
     path: Option<PathBuf>,
     network: &str,
     output: OutputFormat,
+    _fix: bool,
 ) -> anyhow::Result<()> {
     let network = parse_network(network)?;
-    let resolved_path = path
-        .clone()
-        .unwrap_or_else(|| PathBuf::from(".xlm-ns.toml"));
+    let config = load_config(
+        network,
+        ResolveOptions {
+            config_path: path,
+            ..ResolveOptions::default()
+        },
+    )?;
+
+    let validation = crate::commands::validate::run(&config).await;
+    let mut failures = 0;
+
+    if output == OutputFormat::Human {
+        println!("Validating configuration for {}...", network.as_str());
+        for result in &validation.contract_id_format {
+            if result.status == crate::commands::validate::ValidationStatus::Fail {
+                failures += 1;
+            }
+            println!("[{}] {}", result.status, result.name);
+        }
+        if validation.rpc_connectivity.status == crate::commands::validate::ValidationStatus::Fail {
+            failures += 1;
+        }
+        println!(
+            "[{}] {}",
+            validation.rpc_connectivity.status, validation.rpc_connectivity.name
+        );
+        if validation.network_passphrase.status == crate::commands::validate::ValidationStatus::Fail
+        {
+            failures += 1;
+        }
+        println!(
+            "[{}] {}",
+            validation.network_passphrase.status, validation.network_passphrase.name
+        );
+        if validation.signing_key.status == crate::commands::validate::ValidationStatus::Fail {
+            failures += 1;
+        }
+        println!(
+            "[{}] {}",
+            validation.signing_key.status, validation.signing_key.name
+        );
+
+        if failures > 0 {
+            println!("\nValidation failed with {failures} errors.");
+            std::process::exit(1);
+        } else {
+            println!("\nConfiguration is valid.");
+        }
+    } else {
+        let mut results = validation.contract_id_format;
+        results.push(validation.rpc_connectivity);
+        results.push(validation.network_passphrase);
+        results.push(validation.signing_key);
+
+        let ok = results
+            .iter()
+            .all(|r| r.status == crate::commands::validate::ValidationStatus::Pass);
+
+        emit(
+            output,
+            "Validation results",
+            json!({
+                "ok": ok,
+                "results": results,
+            }),
+        );
+
+        if !ok {
+            std::process::exit(1);
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn run_show(
+    path: Option<PathBuf>,
+    network: &str,
+    output: OutputFormat,
+) -> anyhow::Result<()> {
+    let network = parse_network(network)?;
     let config = load_config(
         network,
         ResolveOptions {
@@ -97,17 +176,12 @@ pub async fn run_validate(
 
     emit(
         output,
-        &format!(
-            "Config is valid for {} ({})",
-            config.network.as_str(),
-            resolved_path.display()
-        ),
+        "Current configuration",
         json!({
-            "ok": true,
             "network": config.network.as_str(),
             "config_path": config.config_path,
             "rpc_url": config.rpc_url,
-            "network_passphrase": config.network_passphrase,
+            "network_passphrase": "[REDACTED]",
             "registry_contract_id": config.registry_contract_id,
             "registrar_contract_id": config.registrar_contract_id,
             "resolver_contract_id": config.resolver_contract_id,
