@@ -1,0 +1,60 @@
+name: Branch Protection Policy
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/branch-protection.yml'
+      - '.github/**'
+      - 'scripts/validate_branch_protection.py'
+      - 'CODEOWNERS'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  validate:
+    name: Validate branch protection policy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate branch protection policy
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/validate_branch_protection.py --repo "${{ github.repository }}" --branch main
+
+      - name: Report drift details
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          {
+            echo "## Branch protection drift detected"
+            echo "The main branch protection policy no longer satisfies the minimum governance requirements."
+            echo ""
+            echo "- Required pull request reviews"
+            echo "- Required status checks for build and test"
+            echo "- Up-to-date branch enforcement"
+            echo "- No force-push or deletion"
+            echo "- CODEOWNERS coverage for contracts/, packages/, and .github/"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -fsS -X POST -H 'Content-type: application/json' \
+              --data '{"text":"Branch protection drift detected for ${{ github.repository }} main branch."}' \
+              "$SLACK_WEBHOOK_URL"
+          else
+            echo "No Slack webhook configured; skipping notification."
+          fi
