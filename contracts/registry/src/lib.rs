@@ -355,6 +355,44 @@ impl RegistryContract {
         Ok(())
     }
 
+    pub fn update_owner(
+        env: Env,
+        name: String,
+        new_owner: Address,
+    ) -> Result<(), RegistryError> {
+        // Only the NFT contract can call this function
+        let nft_contract: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::NftContract)
+            .ok_or(RegistryError::Unauthorized)?;
+        let caller = env.caller();
+        if caller != nft_contract {
+            return Err(RegistryError::Unauthorized);
+        }
+
+        let mut entry = get_entry(&env, &name)?;
+        // Verify the name is active (not expired or in grace period)
+        let now_unix = env.ledger().timestamp();
+        if !entry.is_active_at(now_unix) {
+            return Err(RegistryError::NotActive);
+        }
+        let old_owner = entry.owner.clone();
+        entry.owner = new_owner.clone();
+        entry.transfer_count = entry.transfer_count.saturating_add(1);
+        put_entry(&env, &name, &entry);
+        remove_owner_name(&env, &old_owner, &name);
+        add_owner_name(&env, &new_owner, &name);
+        env.events().publish(
+            (symbol_short!("name"), symbol_short!("transfer")),
+            (name.clone(), old_owner, new_owner.clone()),
+        );
+
+        // Note: We don't call back to the NFT contract here to avoid infinite loops
+        // The NFT contract that called us is responsible for keeping its own state in sync
+        Ok(())
+    }
+
     /// Renews a name by extending its expiry and grace period.
     /// This expects cross-contract authorization from the caller via the
     /// Registrar. Unauthorized attempts (where caller is not the owner) are rejected.

@@ -297,7 +297,18 @@ impl NftContract {
             .persistent()
             .set(&DataKey::Token(token_id.clone()), &record);
         reindex_owner_token(&env, &previous_owner, &record.owner, &token_id);
-        events::transfer(&env, previous_owner, new_owner, token_id);
+        events::transfer(&env, previous_owner, new_owner, token_id.clone());
+
+        // Update the registry to keep ownership in sync
+        if let Ok(registry) = get_registry(&env) {
+            let now_unix = env.ledger().timestamp();
+            let _ = env.invoke_contract::<_, Result<(), RegistryError>>(
+                &registry,
+                &Symbol::new(&env, "update_owner"),
+                (token_id.clone(), new_owner).into_val(&env),
+            )?;
+        }
+
         Ok(())
     }
 
@@ -318,7 +329,18 @@ impl NftContract {
             .persistent()
             .set(&DataKey::Token(token_id.clone()), &record);
         reindex_owner_token(&env, &owner, &record.owner, &token_id);
-        events::transfer(&env, owner, recipient, token_id);
+        events::transfer(&env, owner, recipient, token_id.clone());
+
+        // Update the registry to keep ownership in sync
+        if let Ok(registry) = get_registry(&env) {
+            let now_unix = env.ledger().timestamp();
+            let _ = env.invoke_contract::<_, Result<(), RegistryError>>(
+                &registry,
+                &Symbol::new(&env, "update_owner"),
+                (token_id.clone(), recipient).into_val(&env),
+            )?;
+        }
+
         Ok(())
     }
 
