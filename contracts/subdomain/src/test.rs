@@ -12,22 +12,26 @@ mod tests {
     #[test]
     fn register_parent_emits_event() {
         let env = Env::default();
-        let contract_id = env.register(SubdomainContract, ());
+        let contract_id = env.register_contract(None, SubdomainContract);
         let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
 
         let owner = Address::generate(&env);
         let parent = String::from_str(&env, "timmy.xlm");
 
         client.register_parent(&parent, &owner);
 
-        assert_eq!(env.events().all().events().len(), 1);
+        assert_eq!(env.events().all().len(), 1);
     }
 
     #[test]
     fn create_subdomain_emits_event() {
         let env = Env::default();
-        let contract_id = env.register(SubdomainContract, ());
+        let contract_id = env.register_contract(None, SubdomainContract);
         let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
 
         let owner = Address::generate(&env);
         let sub_owner = Address::generate(&env);
@@ -43,14 +47,16 @@ mod tests {
         );
 
         assert_eq!(fqdn, String::from_str(&env, "pay.timmy.xlm"));
-        assert_eq!(env.events().all().events().len(), 1);
+        assert_eq!(env.events().all().len(), 2);
     }
 
     #[test]
     fn transfer_emits_event() {
         let env = Env::default();
-        let contract_id = env.register(SubdomainContract, ());
+        let contract_id = env.register_contract(None, SubdomainContract);
         let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
 
         let owner = Address::generate(&env);
         let sub_owner = Address::generate(&env);
@@ -68,15 +74,17 @@ mod tests {
 
         client.transfer(&fqdn, &sub_owner, &new_owner);
 
-        assert_eq!(env.events().all().events().len(), 1);
+        assert_eq!(env.events().all().len(), 3);
         assert_eq!(client.record(&fqdn).unwrap().owner, new_owner);
     }
 
     #[test]
     fn revoke_emits_event() {
         let env = Env::default();
-        let contract_id = env.register(SubdomainContract, ());
+        let contract_id = env.register_contract(None, SubdomainContract);
         let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
 
         let owner = Address::generate(&env);
         let sub_owner = Address::generate(&env);
@@ -93,15 +101,17 @@ mod tests {
 
         client.revoke(&fqdn, &sub_owner);
 
-        assert_eq!(env.events().all().events().len(), 1);
+        assert_eq!(env.events().all().len(), 3);
         assert!(!client.exists(&fqdn));
     }
 
     #[test]
     fn add_and_remove_controller_emit_events() {
         let env = Env::default();
-        let contract_id = env.register(SubdomainContract, ());
+        let contract_id = env.register_contract(None, SubdomainContract);
         let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
 
         let owner = Address::generate(&env);
         let controller = Address::generate(&env);
@@ -110,17 +120,19 @@ mod tests {
         client.register_parent(&parent, &owner);
 
         client.add_controller(&parent, &owner, &controller);
-        assert_eq!(env.events().all().events().len(), 1);
+        assert_eq!(env.events().all().len(), 2);
 
         client.remove_controller(&parent, &owner, &controller);
-        assert_eq!(env.events().all().events().len(), 1);
+        assert_eq!(env.events().all().len(), 3);
     }
 
     #[test]
     fn stores_subdomain_records_in_contract_storage() {
         let env = Env::default();
-        let contract_id = env.register(SubdomainContract, ());
+        let contract_id = env.register_contract(None, SubdomainContract);
         let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
 
         let owner = Address::generate(&env);
         let controller = Address::generate(&env);
@@ -146,8 +158,10 @@ mod tests {
     #[test]
     fn removes_controller_and_revokes_authority() {
         let env = Env::default();
-        let contract_id = env.register(SubdomainContract, ());
+        let contract_id = env.register_contract(None, SubdomainContract);
         let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
 
         let owner = Address::generate(&env);
         let controller = Address::generate(&env);
@@ -177,8 +191,10 @@ mod tests {
     #[test]
     fn prevents_parent_takeover() {
         let env = Env::default();
-        let contract_id = env.register(SubdomainContract, ());
+        let contract_id = env.register_contract(None, SubdomainContract);
         let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
 
         let owner = Address::generate(&env);
         let intruder = Address::generate(&env);
@@ -202,8 +218,10 @@ mod tests {
     #[test]
     fn subdomain_owner_can_revoke() {
         let env = Env::default();
-        let contract_id = env.register(SubdomainContract, ());
+        let contract_id = env.register_contract(None, SubdomainContract);
         let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
 
         let parent_owner = Address::generate(&env);
         let sub_owner = Address::generate(&env);
@@ -226,8 +244,10 @@ mod tests {
     #[test]
     fn parent_owner_can_revoke() {
         let env = Env::default();
-        let contract_id = env.register(SubdomainContract, ());
+        let contract_id = env.register_contract(None, SubdomainContract);
         let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
 
         let parent_owner = Address::generate(&env);
         let sub_owner = Address::generate(&env);
@@ -250,8 +270,10 @@ mod tests {
     #[test]
     fn parent_controller_can_revoke() {
         let env = Env::default();
-        let contract_id = env.register(SubdomainContract, ());
+        let contract_id = env.register_contract(None, SubdomainContract);
         let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
 
         let parent_owner = Address::generate(&env);
         let controller = Address::generate(&env);
@@ -277,8 +299,10 @@ mod tests {
     #[test]
     fn unauthorized_caller_cannot_revoke() {
         let env = Env::default();
-        let contract_id = env.register(SubdomainContract, ());
+        let contract_id = env.register_contract(None, SubdomainContract);
         let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
 
         let parent_owner = Address::generate(&env);
         let sub_owner = Address::generate(&env);
@@ -304,8 +328,10 @@ mod tests {
     #[test]
     fn rejects_duplicate_parent_registration() {
         let env = Env::default();
-        let contract_id = env.register(SubdomainContract, ());
+        let contract_id = env.register_contract(None, SubdomainContract);
         let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
 
         let owner = Address::generate(&env);
         let parent = String::from_str(&env, "timmy.xlm");
@@ -321,8 +347,10 @@ mod tests {
     #[test]
     fn rejects_unauthorized_subdomain_creation() {
         let env = Env::default();
-        let contract_id = env.register(SubdomainContract, ());
+        let contract_id = env.register_contract(None, SubdomainContract);
         let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
 
         let owner = Address::generate(&env);
         let intruder = Address::generate(&env);
@@ -346,8 +374,10 @@ mod tests {
     #[test]
     fn rejects_unauthorized_controller_addition() {
         let env = Env::default();
-        let contract_id = env.register(SubdomainContract, ());
+        let contract_id = env.register_contract(None, SubdomainContract);
         let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
 
         let owner = Address::generate(&env);
         let intruder = Address::generate(&env);
@@ -371,8 +401,10 @@ mod tests {
     #[test]
     fn transfers_subdomain_ownership_and_queries_existence() {
         let env = Env::default();
-        let contract_id = env.register(SubdomainContract, ());
+        let contract_id = env.register_contract(None, SubdomainContract);
         let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
 
         let owner = Address::generate(&env);
         let sub_owner = Address::generate(&env);
@@ -407,8 +439,83 @@ mod tests {
     #[test]
     fn version_is_exposed() {
         let env = Env::default();
-        let contract_id = env.register(SubdomainContract, ());
+        let contract_id = env.register_contract(None, SubdomainContract);
         let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
         assert_eq!(client.version(), 1);
+    }
+
+    #[test]
+    fn subdomain_depth_limit_is_enforced() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SubdomainContract);
+        let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        let owner = Address::generate(&env);
+        let sub_owner = Address::generate(&env);
+        let parent = String::from_str(&env, "timmy.xlm");
+
+        client.register_parent(&parent, &owner);
+
+        // Should succeed (depth 3)
+        client.create(
+            &String::from_str(&env, "a.b.c"),
+            &parent,
+            &owner,
+            &sub_owner,
+            &100,
+        );
+
+        // Should fail (depth 4)
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            client.create(
+                &String::from_str(&env, "a.b.c.d"),
+                &parent,
+                &owner,
+                &sub_owner,
+                &100,
+            );
+        }));
+        assert!(result.is_err(), "subdomain depth > 3 should fail");
+    }
+
+    #[test]
+    fn max_depth_can_be_configured_by_admin() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, SubdomainContract);
+        let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        let owner = Address::generate(&env);
+        let sub_owner = Address::generate(&env);
+        let parent = String::from_str(&env, "timmy.xlm");
+
+        client.register_parent(&parent, &owner);
+        client.set_max_depth(&4);
+
+        // Should succeed (depth 4)
+        client.create(
+            &String::from_str(&env, "a.b.c.d"),
+            &parent,
+            &owner,
+            &sub_owner,
+            &100,
+        );
+
+        // Should fail (depth 5)
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            client.create(
+                &String::from_str(&env, "a.b.c.d.e"),
+                &parent,
+                &owner,
+                &sub_owner,
+                &100,
+            );
+        }));
+        assert!(result.is_err(), "subdomain depth > 4 should fail");
     }
 }

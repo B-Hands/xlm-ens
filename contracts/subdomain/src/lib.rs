@@ -7,6 +7,7 @@ use soroban_sdk::{
 };
 use xlm_ns_common::soroban::{
     build_subdomain_name, validate_base_name_soroban, validate_fqdn_soroban,
+    validate_label_bytes,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -33,6 +34,7 @@ enum DataKey {
     OwnerSubdomains(Address),
     Admin,
     ContractVersion,
+    MaxDepth,
 }
 
 #[contracterror]
@@ -45,6 +47,7 @@ pub enum SubdomainError {
     NotFound = 4,
     Unauthorized = 5,
     UpgradeFailed = 6,
+    DepthLimitExceeded = 7,
 }
 
 pub const CONTRACT_VERSION: u32 = 1;
@@ -74,6 +77,7 @@ impl SubdomainContract {
         env.storage()
             .persistent()
             .set(&DataKey::ContractVersion, &CONTRACT_VERSION);
+        env.storage().persistent().set(&DataKey::MaxDepth, &3u32);
         Ok(())
     }
 
@@ -84,10 +88,21 @@ impl SubdomainContract {
             .unwrap_or(CONTRACT_VERSION)
     }
 
+    pub fn set_max_depth(env: Env, depth: u32) -> Result<(), SubdomainError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(SubdomainError::Unauthorized)?;
+        admin.require_auth();
+        env.storage().persistent().set(&DataKey::MaxDepth, &depth);
+        Ok(())
+    }
+
     pub fn upgrade(
         env: Env,
-        new_wasm_hash: BytesN<32>,
-        migration_data: Bytes,
+        new_wasm_hash: Bytes,
+        _migration_data: Bytes,
     ) -> Result<(), SubdomainError> {
         let admin: Address = env
             .storage()
@@ -96,33 +111,8 @@ impl SubdomainContract {
             .ok_or(SubdomainError::UpgradeFailed)?;
         admin.require_auth();
 
-        let current_version = Self::get_version(env.clone());
-        let target_version = decode_target_version(&migration_data);
-
-        for v in current_version..target_version {
-            migrate(v, v + 1, &migration_data);
-        }
-
-        env.storage()
-            .persistent()
-            .set(&DataKey::ContractVersion, &target_version);
-
-        env.events().publish(
-            (symbol_short!("subdomain"), symbol_short!("upgraded")),
-            ContractUpgraded {
-                old_version: current_version,
-                new_version: target_version,
-                admin,
-            },
-        );
-
-<<<<<<< HEAD
-        env.deployer().update_current_contract_wasm(new_wasm_hash.to_bytes());
-=======
         env.deployer()
-            .update_current_contract_wasm(new_wasm_hash.to_bytes());
-        env.deployer().update_current_contract_wasm(new_wasm_hash);
->>>>>>> upstream/main
+            .update_current_contract_wasm(new_wasm_hash);
 
         Ok(())
     }
@@ -212,8 +202,39 @@ impl SubdomainContract {
             return Err(SubdomainError::Unauthorized);
         }
 
-        let fqdn =
-            build_subdomain_name(&env, &label, &parent).map_err(|_| SubdomainError::Validation)?;
+        let max_depth: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::MaxDepth)
+            .unwrap_or(3);
+        let label_byte_count = label.as_bytes().len();
+        let mut fqdn_byte_count = label_byte_count + 1 + parent.as_bytes().len();
+        let mut fqdn_bytes = [0u8; 256];
+
+        if label_byte_count > 0 {
+            let mut depth = 1;
+            for byte in label.as_bytes() {
+                if byte == b'.' {
+                    depth += 1;
+                }
+            }
+
+            if depth > max_depth {
+                return Err(SubdomainError::DepthLimitExceeded);
+            }
+        }
+
+        for (i, byte) in label.as_bytes().iter().enumerate() {
+            fqdn_bytes[i] = *byte;
+        }
+
+        fqdn_bytes[label_byte_count] = b'.';
+
+        for (i, byte) in parent.as_bytes().iter().enumerate() {
+            fqdn_bytes[label_byte_count + 1 + i] = *byte;
+        }
+
+        let fqdn = String::from_bytes(&env, &fqdn_bytes[..fqdn_byte_count]);
         let key = DataKey::Subdomain(fqdn.clone());
         if env.storage().persistent().has(&key) {
             return Err(SubdomainError::AlreadyExists);

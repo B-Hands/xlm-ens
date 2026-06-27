@@ -19,6 +19,7 @@ pub use time::{
     is_claimable_at, is_time_window_open, within_grace_period,
 };
 #[cfg(feature = "soroban")]
+pub use soroban::validate_label_bytes;
 pub use types::RegistryEntry;
 pub use types::{NameHash, NameRecord, Tld};
 pub use validation::{

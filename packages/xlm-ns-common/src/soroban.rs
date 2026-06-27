@@ -124,7 +124,7 @@ fn copy_bytes<const N: usize>(value: &String) -> Result<([u8; N], usize), Common
     Ok((bytes, len))
 }
 
-fn validate_label_bytes(bytes: &[u8]) -> Result<(), CommonError> {
+pub fn validate_label_bytes(bytes: &[u8]) -> Result<(), CommonError> {
     let len = bytes.len();
     if len < MIN_NAME_LENGTH {
         return Err(CommonError::NameTooShort);
