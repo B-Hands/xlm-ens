@@ -10,6 +10,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 soroban-sdk = { version = "=26.0.0-rc.1", features = ["alloc"] }
 xlm-ns-common = { path = "../../packages/xlm-ns-common", features = ["soroban"] }
+xlm-ns-registry = { path = "../registry" }
 
 [dev-dependencies]
 soroban-sdk = { version = "=26.0.0-rc.1", features = ["testutils"] }

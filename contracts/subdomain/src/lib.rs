@@ -5,10 +5,8 @@ use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, Address,
     Bytes, Env, String, Vec,
 };
-use xlm_ns_common::soroban::{
-    build_subdomain_name, validate_base_name_soroban, validate_fqdn_soroban,
-    validate_label_bytes,
-};
+use xlm_ns_common::soroban::{validate_base_name_soroban, validate_fqdn_soroban};
+use xlm_ns_registry::{NameState, RegistryContractClient};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
@@ -32,6 +30,7 @@ enum DataKey {
     Subdomain(String),
     ParentSubdomains(String),
     OwnerSubdomains(Address),
+    RegistryContract,
     Admin,
     ContractVersion,
     MaxDepth,
@@ -81,6 +80,22 @@ impl SubdomainContract {
         Ok(())
     }
 
+    pub fn set_registry_contract(
+        env: Env,
+        registry_contract: Address,
+    ) -> Result<(), SubdomainError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(SubdomainError::Unauthorized)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::RegistryContract, &registry_contract);
+        Ok(())
+    }
+
     pub fn get_version(env: Env) -> u32 {
         env.storage()
             .persistent()
@@ -111,8 +126,7 @@ impl SubdomainContract {
             .ok_or(SubdomainError::UpgradeFailed)?;
         admin.require_auth();
 
-        env.deployer()
-            .update_current_contract_wasm(new_wasm_hash);
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
 
         Ok(())
     }
@@ -126,7 +140,29 @@ impl SubdomainContract {
         validate_fqdn_soroban(&parent).map_err(|_| SubdomainError::Validation)?;
         validate_base_name_soroban(&parent).map_err(|_| SubdomainError::Validation)?;
         let key = DataKey::Parent(parent.clone());
-        if env.storage().persistent().has(&key) {
+        if let Some(registry_client) = get_registry_client(&env) {
+            match registry_client.resolve(&parent, &env.ledger().timestamp()) {
+                Ok(entry) => {
+                    if entry.owner != owner {
+                        return Err(SubdomainError::Unauthorized);
+                    }
+                    if let Some(existing) = env.storage().persistent().get::<_, ParentDomain>(&key)
+                    {
+                        if existing.owner != entry.owner {
+                            purge_parent_namespace(&env, &parent);
+                        } else {
+                            return Err(SubdomainError::AlreadyExists);
+                        }
+                    }
+                }
+                Err(_) => {
+                    if env.storage().persistent().has(&key) {
+                        purge_parent_namespace(&env, &parent);
+                    }
+                    return Err(SubdomainError::ParentNotFound);
+                }
+            }
+        } else if env.storage().persistent().has(&key) {
             return Err(SubdomainError::AlreadyExists);
         }
         let record = ParentDomain {
@@ -265,6 +301,9 @@ impl SubdomainContract {
         new_owner: Address,
     ) -> Result<(), SubdomainError> {
         let mut record = get_subdomain(&env, &fqdn)?;
+        if !ensure_parent_is_active(&env, &record.parent) {
+            return Err(SubdomainError::ParentNotFound);
+        }
         if record.owner != caller {
             return Err(SubdomainError::Unauthorized);
         }
@@ -287,6 +326,9 @@ impl SubdomainContract {
 
     pub fn delete(env: Env, fqdn: String, caller: Address) -> Result<(), SubdomainError> {
         let record = get_subdomain(&env, &fqdn)?;
+        if !ensure_parent_is_active(&env, &record.parent) {
+            return Err(SubdomainError::ParentNotFound);
+        }
         if record.owner != caller {
             let parent_record = get_parent(&env, &record.parent)?;
             if parent_record.owner != caller && !parent_record.controllers.contains(&caller) {
@@ -315,6 +357,9 @@ impl SubdomainContract {
     ///   (e.g., to reclaim the namespace or enforce namespace rules).
     pub fn revoke(env: Env, fqdn: String, caller: Address) -> Result<(), SubdomainError> {
         let record = get_subdomain(&env, &fqdn)?;
+        if !ensure_parent_is_active(&env, &record.parent) {
+            return Err(SubdomainError::ParentNotFound);
+        }
 
         let mut is_authorized = false;
         if record.owner == caller {
@@ -342,18 +387,38 @@ impl SubdomainContract {
     }
 
     pub fn exists(env: Env, fqdn: String) -> bool {
-        env.storage().persistent().has(&DataKey::Subdomain(fqdn))
+        Self::record(env, fqdn).is_some()
     }
 
     pub fn parent(env: Env, parent: String) -> Option<ParentDomain> {
+        if !ensure_parent_is_active(&env, &parent) {
+            return None;
+        }
         env.storage().persistent().get(&DataKey::Parent(parent))
     }
 
     pub fn record(env: Env, fqdn: String) -> Option<SubdomainRecord> {
-        env.storage().persistent().get(&DataKey::Subdomain(fqdn))
+        match env
+            .storage()
+            .persistent()
+            .get::<_, SubdomainRecord>(&DataKey::Subdomain(fqdn.clone()))
+        {
+            None => None,
+            Some(record) => {
+                if ensure_parent_is_active(&env, &record.parent) {
+                    Some(record)
+                } else {
+                    purge_subdomain_record(&env, &fqdn, &record);
+                    None
+                }
+            }
+        }
     }
 
     pub fn subdomains_for_parent(env: Env, parent: String) -> Vec<String> {
+        if !ensure_parent_is_active(&env, &parent) {
+            return Vec::new(&env);
+        }
         get_parent_subdomains(&env, &parent)
     }
 
@@ -363,6 +428,9 @@ impl SubdomainContract {
 }
 
 fn get_parent(env: &Env, parent: &String) -> Result<ParentDomain, SubdomainError> {
+    if !ensure_parent_is_active(env, parent) {
+        return Err(SubdomainError::ParentNotFound);
+    }
     env.storage()
         .persistent()
         .get(&DataKey::Parent(parent.clone()))
@@ -374,6 +442,53 @@ fn get_subdomain(env: &Env, fqdn: &String) -> Result<SubdomainRecord, SubdomainE
         .persistent()
         .get(&DataKey::Subdomain(fqdn.clone()))
         .ok_or(SubdomainError::NotFound)
+}
+
+fn get_registry_client(env: &Env) -> Option<RegistryContractClient> {
+    env.storage()
+        .instance()
+        .get::<_, Address>(&DataKey::RegistryContract)
+        .map(|addr| RegistryContractClient::new(env, &addr))
+}
+
+fn ensure_parent_is_active(env: &Env, parent: &String) -> bool {
+    match get_registry_client(env) {
+        None => true,
+        Some(client) => match client.name_state(parent, &env.ledger().timestamp()) {
+            NameState::Active => true,
+            _ => {
+                purge_parent_namespace(env, parent);
+                false
+            }
+        },
+    }
+}
+
+fn purge_parent_namespace(env: &Env, parent: &String) {
+    let subdomains = get_parent_subdomains(env, parent);
+    for fqdn in subdomains.iter() {
+        if let Some(record) = env
+            .storage()
+            .persistent()
+            .get::<_, SubdomainRecord>(&DataKey::Subdomain(fqdn.clone()))
+        {
+            purge_subdomain_record(env, &fqdn, &record);
+        }
+    }
+    env.storage()
+        .persistent()
+        .remove(&DataKey::ParentSubdomains(parent.clone()));
+    env.storage()
+        .persistent()
+        .remove(&DataKey::Parent(parent.clone()));
+}
+
+fn purge_subdomain_record(env: &Env, fqdn: &String, record: &SubdomainRecord) {
+    remove_parent_subdomain(env, &record.parent, fqdn);
+    remove_owner_subdomain(env, &record.owner, fqdn);
+    env.storage()
+        .persistent()
+        .remove(&DataKey::Subdomain(fqdn.clone()));
 }
 
 fn get_parent_subdomains(env: &Env, parent: &String) -> Vec<String> {
