@@ -3,13 +3,7 @@ mod test;
 
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, token,
-<<<<<<< HEAD
-    Address, Bytes, Env, String, Vec,
-=======
     Address, Bytes, BytesN, Env, String, Vec,
-    contract, contracterror, contractevent, contractimpl, contracttype, token, Address, Bytes,
-    BytesN, Env, String, Vec,
->>>>>>> upstream/main
 };
 use xlm_ns_common::soroban::validate_fqdn_soroban;
 use xlm_ns_common::time::is_time_window_open;
@@ -78,11 +72,7 @@ pub enum AuctionError {
 pub const CONTRACT_VERSION: u32 = 1;
 
 #[contractevent]
-<<<<<<< HEAD
 #[contracttype]
-            (current_version, target_version, admin),
-        );
-=======
 pub struct ContractUpgraded {
     pub old_version: u32,
     pub new_version: u32,
@@ -90,6 +80,7 @@ pub struct ContractUpgraded {
 }
 
 #[contractevent]
+#[contracttype]
 pub struct AuctionCancelled {
     pub name: String,
     pub admin: Address,
@@ -156,8 +147,6 @@ impl AuctionContract {
             admin,
         }
         .publish(&env);
->>>>>>> upstream/main
-
         env.deployer().update_current_contract_wasm(new_wasm_hash);
 
         Ok(())
