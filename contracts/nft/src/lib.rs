@@ -3,13 +3,8 @@ mod events;
 mod test;
 
 use soroban_sdk::{
-<<<<<<< HEAD
     contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, Address,
-    Bytes, Env, String, Vec,
-=======
-    contract, contracterror, contractevent, contractimpl, contracttype, Address, Bytes, BytesN,
-    Env, IntoVal, String, Symbol, Vec,
->>>>>>> upstream/main
+    Bytes, BytesN, Env, IntoVal, String, Symbol, Vec,
 };
 use xlm_ns_common::RegistryEntry;
 
@@ -129,13 +124,7 @@ impl NftContract {
             },
         );
 
-<<<<<<< HEAD
         env.deployer().update_current_contract_wasm(new_wasm_hash.to_bytes());
-=======
-        env.deployer()
-            .update_current_contract_wasm(new_wasm_hash.to_bytes());
-        env.deployer().update_current_contract_wasm(new_wasm_hash);
->>>>>>> upstream/main
 
         Ok(())
     }
