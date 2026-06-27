@@ -132,6 +132,20 @@ Examples:
 - `cargo run -p xlm-ns-cli -- portfolio GDRA...OWNER_ADDR --batch-size 50 --limit 200`
 - `cargo run -p xlm-ns-cli -- portfolio GDRA...OWNER_ADDR --page 3 --output csv`
 
+#### Shell completions
+
+Generate completion scripts directly:
+
+- Bash: `cargo run -p xlm-ns-cli -- completions bash > ~/.local/share/bash-completion/completions/xlm-ns`
+- Zsh: `cargo run -p xlm-ns-cli -- completions zsh > ~/.local/share/zsh/site-functions/_xlm-ns`
+- Fish: `cargo run -p xlm-ns-cli -- completions fish > ~/.config/fish/completions/xlm-ns.fish`
+
+Or install the appropriate script automatically for the detected shell:
+
+- `cargo run -p xlm-ns-cli -- completions install`
+
+The CLI also exposes the same instructions in `xlm-ns --help`.
+
 #### Contract spec artifacts (CI)
 
 CI uploads a `soroban-contract-artifacts` artifact containing built contract WASM files and extracted contract specs (JSON).

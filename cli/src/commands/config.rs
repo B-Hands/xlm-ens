@@ -1,5 +1,5 @@
-use crate::config::{config_template, load_config, Network, ResolveOptions};
-use crate::output::{emit, OutputFormat};
+use crate::config::{Network, ResolveOptions, config_template, load_config};
+use crate::output::{OutputFormat, emit};
 use serde_json::json;
 use std::env;
 use std::fs;
@@ -9,11 +9,6 @@ use std::process::Command;
 
 fn resolve_path(path: Option<PathBuf>) -> PathBuf {
     path.unwrap_or_else(|| PathBuf::from(".xlm-ns.toml"))
-}
-
-fn parse_network(network: &str) -> anyhow::Result<Network> {
-    Network::parse(network)
-        .ok_or_else(|| anyhow::anyhow!("invalid network '{network}' (expected testnet or mainnet)"))
 }
 
 fn write_template(path: &Path, network: Network, force: bool) -> anyhow::Result<()> {
@@ -58,8 +53,7 @@ fn open_editor(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn run_init(path: Option<PathBuf>, network: &str, force: bool) -> anyhow::Result<()> {
-    let network = parse_network(network)?;
+pub async fn run_init(path: Option<PathBuf>, network: Network, force: bool) -> anyhow::Result<()> {
     let path = resolve_path(path);
     write_template(&path, network, force)?;
 
@@ -67,8 +61,7 @@ pub async fn run_init(path: Option<PathBuf>, network: &str, force: bool) -> anyh
     Ok(())
 }
 
-pub async fn run_edit(path: Option<PathBuf>, network: &str) -> anyhow::Result<()> {
-    let network = parse_network(network)?;
+pub async fn run_edit(path: Option<PathBuf>, network: Network) -> anyhow::Result<()> {
     let path = resolve_path(path);
     if !path.exists() {
         write_template(&path, network, false)?;
@@ -80,11 +73,10 @@ pub async fn run_edit(path: Option<PathBuf>, network: &str) -> anyhow::Result<()
 
 pub async fn run_validate(
     path: Option<PathBuf>,
-    network: &str,
+    network: Network,
     output: OutputFormat,
     _fix: bool,
 ) -> anyhow::Result<()> {
-    let network = parse_network(network)?;
     let config = load_config(
         network,
         ResolveOptions {
@@ -162,10 +154,9 @@ pub async fn run_validate(
 
 pub async fn run_show(
     path: Option<PathBuf>,
-    network: &str,
+    network: Network,
     output: OutputFormat,
 ) -> anyhow::Result<()> {
-    let network = parse_network(network)?;
     let config = load_config(
         network,
         ResolveOptions {

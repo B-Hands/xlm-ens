@@ -6,10 +6,10 @@ mod signer;
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use clap_complete::Shell;
-use config::{load_config, ContractKind, ContractOverrides, Network, ResolveOptions};
+use commands::completions::CompletionCommand;
+use config::{ContractKind, ContractOverrides, Network, ResolveOptions, load_config};
 use output::OutputFormat;
-use signer::{load_profile, SignerProfile};
+use signer::{SignerProfile, load_profile};
 use std::path::PathBuf;
 use std::process;
 
@@ -18,10 +18,13 @@ const BIN_NAME: &str = "xlm-ns";
 #[derive(Parser)]
 #[command(name = BIN_NAME)]
 #[command(about = "XLM Name Service CLI", long_about = None)]
+#[command(
+    after_help = "Shell completions:\n  xlm-ns completions bash > ~/.local/share/bash-completion/completions/xlm-ns\n  xlm-ns completions zsh > ~/.local/share/zsh/site-functions/_xlm-ns\n  xlm-ns completions fish > ~/.config/fish/completions/xlm-ns.fish\n  xlm-ns completions install\n"
+)]
 struct Cli {
     /// Network to use (`testnet` or `mainnet`)
-    #[arg(short, long, default_value = "testnet", global = true)]
-    network: String,
+    #[arg(short, long, value_enum, default_value_t = Network::Testnet, global = true)]
+    network: Network,
 
     /// Config file path. Falls back to `XLM_NS_CONFIG`, then the documented search path.
     #[arg(long, global = true)]
@@ -68,7 +71,7 @@ struct Cli {
     command: Commands,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum Commands {
     /// Register a new name.
     Register {
@@ -119,11 +122,11 @@ enum Commands {
     #[command(subcommand)]
     Auction(AuctionCommands),
     /// Generate a shell completion script.
-    Completions {
-        /// Target shell
-        #[arg(value_enum)]
-        shell: Shell,
-    },
+    #[command(
+        subcommand,
+        long_about = "Generate or install shell completions for bash, zsh, and fish.\n\nUse `xlm-ns completions bash|zsh|fish` to print a completion script to stdout.\nUse `xlm-ns completions install` to install into the standard per-shell user directory."
+    )]
+    Completions(CompletionCommand),
     /// Bridge management commands.
     #[command(subcommand)]
     Bridge(BridgeCommands),
@@ -184,7 +187,7 @@ enum Commands {
     Healthcheck,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 pub enum BulkCommands {
     /// Bulk register names from a file.
     Register {
@@ -200,7 +203,7 @@ pub enum BulkCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum AuctionCommands {
     /// Create a new auction for a name
     Create {
@@ -259,7 +262,7 @@ enum AuctionCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum SubdomainCommands {
     /// Register a parent domain for subdomain management
     /// This enables the parent domain owner to create and manage subdomains
@@ -297,7 +300,7 @@ enum SubdomainCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum BridgeCommands {
     /// Register a bridge route for a supported chain
     Register {
@@ -320,13 +323,13 @@ enum BridgeCommands {
     TestVectors,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum NftCommands {
     /// Inspect the owner and metadata for a token id.
     Inspect { token_id: String },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum ConfigCommands {
     /// Create a config file template.
     Init {
@@ -334,8 +337,8 @@ enum ConfigCommands {
         #[arg(long)]
         path: Option<PathBuf>,
         /// Network profile to render into the template.
-        #[arg(long, default_value = "testnet")]
-        network: String,
+        #[arg(long, value_enum, default_value_t = Network::Testnet)]
+        network: Network,
         /// Overwrite an existing file.
         #[arg(long)]
         force: bool,
@@ -346,8 +349,8 @@ enum ConfigCommands {
         #[arg(long)]
         path: Option<PathBuf>,
         /// Network profile to render when creating a new file.
-        #[arg(long, default_value = "testnet")]
-        network: String,
+        #[arg(long, value_enum, default_value_t = Network::Testnet)]
+        network: Network,
     },
     /// Validate a config file without invoking any contract RPCs.
     Validate {
@@ -355,8 +358,8 @@ enum ConfigCommands {
         #[arg(long)]
         path: Option<PathBuf>,
         /// Network to validate against.
-        #[arg(long, default_value = "testnet")]
-        network: String,
+        #[arg(long, value_enum, default_value_t = Network::Testnet)]
+        network: Network,
         /// Interactively prompt to correct invalid values.
         #[arg(long)]
         fix: bool,
@@ -367,12 +370,12 @@ enum ConfigCommands {
         #[arg(long)]
         path: Option<PathBuf>,
         /// Network to show the configuration for.
-        #[arg(long, default_value = "testnet")]
-        network: String,
+        #[arg(long, value_enum, default_value_t = Network::Testnet)]
+        network: Network,
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 enum TextCommand {
     /// Read a text record value for a name.
     Get { name: String, key: String },
@@ -399,13 +402,12 @@ fn resolve_signer(name: Option<String>) -> anyhow::Result<Option<SignerProfile>>
 async fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    if let Commands::Completions { shell } = cli.command {
-        commands::completions::run_completions::<Cli>(shell, BIN_NAME);
+    if let Commands::Completions(command) = cli.command.clone() {
+        commands::completions::run_completion_command::<Cli>(command, BIN_NAME)?;
         return Ok(());
     }
 
-    let network = Network::parse(&cli.network)
-        .with_context(|| format!("invalid network '{}'", cli.network))?;
+    let network = cli.network;
 
     let contract_overrides = ContractOverrides {
         registry_contract_id: cli.registry_contract_id.clone(),
@@ -535,21 +537,21 @@ async fn run() -> anyhow::Result<()> {
                 path,
                 network,
                 force,
-            } => commands::config::run_init(path.or(cli.config.clone()), &network, force).await,
+            } => commands::config::run_init(path.or(cli.config.clone()), network, force).await,
             ConfigCommands::Edit { path, network } => {
-                commands::config::run_edit(path.or(cli.config.clone()), &network).await
+                commands::config::run_edit(path.or(cli.config.clone()), network).await
             }
             ConfigCommands::Validate { path, network, fix } => {
                 commands::config::run_validate(
                     path.or(cli.config.clone()),
-                    &network,
+                    network,
                     cli.output,
                     fix,
                 )
                 .await
             }
             ConfigCommands::Show { path, network } => {
-                commands::config::run_show(path.or(cli.config.clone()), &network, cli.output)
+                commands::config::run_show(path.or(cli.config.clone()), network, cli.output)
                     .await
             }
         },
@@ -582,7 +584,7 @@ async fn run() -> anyhow::Result<()> {
                 commands::bulk::run_bulk_renew(config, &file, cli.dry_run).await
             }
         },
-        Commands::Completions { .. } => unreachable!("handled above"),
+        Commands::Completions(_) => unreachable!("handled above"),
     }
 }
 
@@ -923,7 +925,7 @@ fn validate_contract_policy(
             &[ContractKind::Auction],
             &[ContractKind::Auction],
         ),
-        Commands::Completions { .. } => ("completions", &[], &[]),
+        Commands::Completions(_) => ("completions", &[], &[]),
         Commands::Bridge(_) => ("bridge", &[ContractKind::Bridge], &[ContractKind::Bridge]),
         Commands::Subdomain(_) => (
             "subdomain",

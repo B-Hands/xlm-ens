@@ -1,3 +1,4 @@
+use clap::ValueEnum;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::env;
@@ -6,7 +7,7 @@ use std::fs;
 use std::path::PathBuf;
 use xlm_ns_common::validation::validate_contract_id;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Network {
     Testnet,
     Mainnet,
