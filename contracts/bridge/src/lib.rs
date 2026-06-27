@@ -4,9 +4,7 @@ mod test;
 
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, Address,
-    Bytes, BytesN, Env, String,
-    contract, contracterror, contractevent, contractimpl, contracttype, Address, Bytes, BytesN,
-    Env, String, Vec,
+    Bytes, BytesN, Env, String, Vec,
 };
 use xlm_ns_common::soroban::{validate_chain_name_soroban, validate_fqdn_soroban};
 
@@ -51,11 +49,6 @@ pub enum BridgeError {
 pub const CONTRACT_VERSION: u32 = 1;
 
 #[contractevent]
-<<<<<<< HEAD
-#[contracttype]
-            (current_version, target_version, admin),
-        );
-=======
 pub struct ContractUpgraded {
     pub old_version: u32,
     pub new_version: u32,
@@ -133,7 +126,6 @@ impl BridgeContract {
             admin,
         }
         .publish(&env);
->>>>>>> upstream/main
 
         env.deployer().update_current_contract_wasm(new_wasm_hash);
 

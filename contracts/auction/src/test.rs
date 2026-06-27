@@ -4,10 +4,96 @@ mod tests {
 
     use std::format;
 
+    use soroban_sdk::{
+        contract, contractimpl, contracttype,
+        testutils::Address as _, Address, Env, String,
+    };
     use soroban_sdk::token;
-    use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
     use crate::{AuctionContract, AuctionContractClient};
+
+    #[contract]
+    pub struct ReentrantToken;
+
+    #[derive(Clone)]
+    #[contracttype]
+    enum ReentrantKey {
+        Balance(Address),
+        Auction,
+        Bidder,
+        Name,
+        Triggered,
+    }
+
+    #[contractimpl]
+    impl ReentrantToken {
+        pub fn initialize(env: Env, auction: Address, bidder: Address, name: String) {
+            env.storage().instance().set(&ReentrantKey::Auction, &auction);
+            env.storage().instance().set(&ReentrantKey::Bidder, &bidder);
+            env.storage().instance().set(&ReentrantKey::Name, &name);
+        }
+
+        pub fn mint(env: Env, to: Address, amount: i128) {
+            let key = ReentrantKey::Balance(to);
+            let balance = env
+                .storage()
+                .persistent()
+                .get::<_, i128>(&key)
+                .unwrap_or(0);
+            env.storage()
+                .persistent()
+                .set(&key, &balance.saturating_add(amount));
+        }
+
+        pub fn balance(env: Env, owner: Address) -> i128 {
+            env.storage()
+                .persistent()
+                .get(&ReentrantKey::Balance(owner))
+                .unwrap_or(0)
+        }
+
+        pub fn transfer(
+            env: Env,
+            from: Address,
+            to: Address,
+            amount: i128,
+        ) -> Result<(), ()> {
+            if !env
+                .storage()
+                .instance()
+                .get::<_, bool>(&ReentrantKey::Triggered)
+                .unwrap_or(false)
+            {
+                env.storage().instance().set(&ReentrantKey::Triggered, &true);
+                let auction: Address = env.storage().instance().get(&ReentrantKey::Auction).unwrap();
+                let bidder: Address = env.storage().instance().get(&ReentrantKey::Bidder).unwrap();
+                let name: String = env.storage().instance().get(&ReentrantKey::Name).unwrap();
+                let client = AuctionContractClient::new(&env, &auction);
+                let _ = client.try_place_bid(&name, &bidder, &1u64, &env.ledger().timestamp());
+            }
+
+            let from_key = ReentrantKey::Balance(from);
+            let to_key = ReentrantKey::Balance(to);
+            let from_balance = env
+                .storage()
+                .persistent()
+                .get::<_, i128>(&from_key)
+                .unwrap_or(0);
+            let to_balance = env
+                .storage()
+                .persistent()
+                .get::<_, i128>(&to_key)
+                .unwrap_or(0);
+
+            env.storage()
+                .persistent()
+                .set(&from_key, &from_balance.saturating_sub(amount));
+            env.storage()
+                .persistent()
+                .set(&to_key, &to_balance.saturating_add(amount));
+            Ok(())
+        }
+    }
 
     fn setup_token(
         env: &Env,
@@ -23,6 +109,18 @@ mod tests {
             token::StellarAssetClient::new(env, &contract),
             token::Client::new(env, &contract),
         )
+    }
+
+    fn setup_reentrant_token(
+        env: &Env,
+        auction: &Address,
+        bidder: &Address,
+        name: &String,
+    ) -> (Address, ReentrantTokenClient<'static>) {
+        let contract_id = env.register_contract(None, ReentrantToken);
+        let client = ReentrantTokenClient::new(env, &contract_id);
+        client.initialize(auction, bidder, name);
+        (contract_id, client)
     }
 
     #[test]
@@ -55,6 +153,30 @@ mod tests {
         assert_eq!(token.balance(&bob), 1000);
         assert_eq!(token.balance(&treasury), 300);
     } //
+
+    #[test]
+    fn reentrant_token_transfer_cannot_reenter_place_bid() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let auction_id = env.register(AuctionContract, ());
+        let client = AuctionContractClient::new(&env, &auction_id);
+
+        let alice = Address::generate(&env);
+        let treasury = Address::generate(&env);
+        let name = String::from_str(&env, "guarded.xlm");
+
+        let (asset, token) = setup_reentrant_token(&env, &auction_id, &alice, &name);
+        token.mint(&alice, &1000);
+
+        client.create_auction(&name, &asset, &treasury, &100, &10, &20);
+        client.place_bid(&name, &alice, &500, &12);
+
+        let auction = client.auction(&name).unwrap();
+        assert_eq!(auction.bids.len(), 1);
+        assert_eq!(token.balance(&alice), 500);
+        assert_eq!(token.balance(&treasury), 0);
+    }
 
     #[test]
     fn test_auction_no_bids() {

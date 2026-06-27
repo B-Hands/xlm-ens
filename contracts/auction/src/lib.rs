@@ -48,6 +48,7 @@ enum DataKey {
     AuctionNames,
     Admin,
     ContractVersion,
+    ReentrancyLock,
 }
 
 /// Bounded result window for auction discovery queries (#157).
@@ -67,12 +68,12 @@ pub enum AuctionError {
     AlreadySettled = 7,
     InvalidBid = 8,
     UpgradeFailed = 9,
+    ReentrancyDetected = 10,
 }
 
 pub const CONTRACT_VERSION: u32 = 1;
 
 #[contractevent]
-#[contracttype]
 pub struct ContractUpgraded {
     pub old_version: u32,
     pub new_version: u32,
@@ -147,6 +148,7 @@ impl AuctionContract {
             admin,
         }
         .publish(&env);
+
         env.deployer().update_current_contract_wasm(new_wasm_hash);
 
         Ok(())
@@ -254,35 +256,37 @@ impl AuctionContract {
         amount: u64,
         now_unix: u64,
     ) -> Result<(), AuctionError> {
-        bidder.require_auth();
-        if amount == 0 {
-            return Err(AuctionError::InvalidBid);
-        }
-        let mut auction = get_auction(&env, &name)?;
-        if env
-            .storage()
-            .persistent()
-            .has(&DataKey::Settlement(name.clone()))
-        {
-            return Err(AuctionError::AlreadySettled);
-        }
-        if !is_time_window_open(now_unix, auction.starts_at, auction.ends_at) {
-            if now_unix < auction.starts_at {
-                return Err(AuctionError::AuctionNotStarted);
+        with_reentrancy_lock(&env, || {
+            bidder.require_auth();
+            if amount == 0 {
+                return Err(AuctionError::InvalidBid);
             }
-            return Err(AuctionError::AuctionClosed);
-        }
+            let mut auction = get_auction(&env, &name)?;
+            if env
+                .storage()
+                .persistent()
+                .has(&DataKey::Settlement(name.clone()))
+            {
+                return Err(AuctionError::AlreadySettled);
+            }
+            if !is_time_window_open(now_unix, auction.starts_at, auction.ends_at) {
+                if now_unix < auction.starts_at {
+                    return Err(AuctionError::AuctionNotStarted);
+                }
+                return Err(AuctionError::AuctionClosed);
+            }
 
-        let token = token::Client::new(&env, &auction.asset);
-        token.transfer(&bidder, &env.current_contract_address(), &(amount as i128));
+            let token = token::Client::new(&env, &auction.asset);
+            token.transfer(&bidder, &env.current_contract_address(), &(amount as i128));
 
-        auction.bids.push_back(Bid {
-            bidder,
-            amount,
-            placed_at: now_unix,
-        });
-        put_auction(&env, &name, &auction);
-        Ok(())
+            auction.bids.push_back(Bid {
+                bidder,
+                amount,
+                placed_at: now_unix,
+            });
+            put_auction(&env, &name, &auction);
+            Ok(())
+        })
     }
 
     pub fn settle(
@@ -488,6 +492,25 @@ fn decode_target_version(data: &Bytes) -> u32 {
     let b2 = data.get(2).unwrap_or(0);
     let b3 = data.get(3).unwrap_or(0);
     u32::from_be_bytes([b0, b1, b2, b3])
+}
+
+fn with_reentrancy_lock<R, F>(env: &Env, f: F) -> Result<R, AuctionError>
+where
+    F: FnOnce() -> Result<R, AuctionError>,
+{
+    if env
+        .storage()
+        .instance()
+        .get::<_, bool>(&DataKey::ReentrancyLock)
+        .unwrap_or(false)
+    {
+        return Err(AuctionError::ReentrancyDetected);
+    }
+
+    env.storage().instance().set(&DataKey::ReentrancyLock, &true);
+    let result = f();
+    env.storage().instance().set(&DataKey::ReentrancyLock, &false);
+    result
 }
 
 fn settle_vickrey(auction: &Auction, settled_at: u64) -> Option<Settlement> {
