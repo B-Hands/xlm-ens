@@ -42,6 +42,10 @@ path = "integration/bridge_test.rs"
 name = "bulk_test"
 path = "integration/bulk_test.rs"
 
+[[test]]
+name = "registry_errors_test"
+path = "integration/registry_errors_test.rs"
+
 # Storage / hot-path benchmarks. Marked `#[ignore]` in source so they do not
 # run in default `cargo test`; invoke with:
 #   cargo test --test storage_benchmarks -- --ignored --nocapture
