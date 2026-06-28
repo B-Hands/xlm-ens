@@ -17,6 +17,9 @@ serde_json = "1.0"
 stellar_sdk = "0.1.4"
 tokio = { version = "1", features = ["full"] }
 toml = "0.8"
+dirs = "5.0"
+chrono = { version = "0.4", features = ["serde"] }
+colored = "2.0"
 xlm-ns-auction = { path = "../contracts/auction" }
 xlm-ns-common = { path = "../packages/xlm-ns-common", features = ["std"] }
 xlm-ns-sdk = { path = "../packages/xlm-ns-sdk" }

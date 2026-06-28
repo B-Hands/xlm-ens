@@ -7,6 +7,7 @@ mod signer;
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use commands::completions::CompletionCommand;
+use commands::watch::WatchCommand;
 use config::{ContractKind, ContractOverrides, Network, ResolveOptions, load_config};
 use output::OutputFormat;
 use signer::{SignerProfile, load_profile};
@@ -139,6 +140,9 @@ enum Commands {
     /// Manage configuration files and validation.
     #[command(subcommand)]
     Config(ConfigCommands),
+    /// Watch for name expirations
+    #[command(subcommand)]
+    Watch(WatchCommand),
     /// Show registration details for a single name.
     Whois {
         /// Name to inspect
@@ -585,6 +589,7 @@ async fn run() -> anyhow::Result<()> {
             }
         },
         Commands::Completions(_) => unreachable!("handled above"),
+        Commands::Watch(sub) => commands::watch::run(config, sub).await,
     }
 }
 
@@ -934,6 +939,7 @@ fn validate_contract_policy(
         ),
         Commands::Nft(_) => ("nft", &[ContractKind::Nft], &[ContractKind::Nft]),
         Commands::Config(_) => ("config", &[], &[]),
+        Commands::Watch(_) => ("watch", &[ContractKind::Registry], &[]),
         Commands::Whois { .. } => (
             "whois",
             &[ContractKind::Registry, ContractKind::Resolver],
