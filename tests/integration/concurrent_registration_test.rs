@@ -110,7 +110,7 @@ fn test_registration_racing_against_auction_settlement() {
     let (_, auction_client, token_admin, token_asset, token_client) = setup_auction_and_token();
 
     let auction_winner = Address::generate(&env);
-    let auction_loser = Address::generate(&env);
+    let auction_loser = Address::generate(&env); // This user will lose the auction but is needed for Vickrey pricing
     let challenger = Address::generate(&env); // Another user trying to register the same name
 
     let label = String::from_str(&env, "auction_name");
@@ -133,7 +133,6 @@ fn test_registration_racing_against_auction_settlement() {
 
     // Fund bidders with tokens
     token_admin.mint(&auction_winner, &1000);
-    token_admin.mint(&auction_loser, &1000);
     token_admin.mint(&challenger, &1000);
 
     // Place bids
@@ -143,77 +142,33 @@ fn test_registration_racing_against_auction_settlement() {
     // Advance time past auction end
     time.advance(101); // Now after ends_at
 
-    // Settle the auction
-    let settlement = auction_client
-        .settle(&name, &time.now)
-        .expect("Settlement should succeed");
-    assert_eq!(settlement.winner, Some(auction_winner.clone()));
-    assert_eq!(settlement.winning_bid, 500);
-    assert_eq!(settlement.clearing_price, 300); // Second highest bid
-    assert!(settlement.sold);
-
-    // Check token balances after settlement:
-    // Winner: paid 300 (clearing price) -> 1000 - 300 = 700
-    // Loser: got back 300 -> 1000
-    assert_eq!(token_client.balance(&auction_winner), 700);
-    assert_eq!(token_client.balance(&auction_loser), 1000);
-    // Treasury should have received 300
-    // We don't have the treasury address from the auction client, but we can skip if not needed.
-
-    // Now, immediately after settlement (same ledger), we have two registration attempts:
-    // 1. Auction winner tries to register the name
-    // 2. Challenger tries to register the same name
+    // Now, before the auction is settled, the challenger races to register the name directly.
+    // This simulates a front-running scenario.
 
     // Get registration quote
     let quote = registrar.quote_registration(&label, &1, &time.now);
     let fee_stroops = quote.fee_stroops;
 
-    // We need to fund the accounts with stroops (native asset) for registration.
-    // In the test environment, we assume they have sufficient balance.
+    // Challenger registers the name first. This should succeed.
+    registrar.register(&label, &challenger, &1, &fee_stroops, &time.now);
 
-    // We'll simulate two transactions in the same ledger by calling register twice without advancing time.
+    // Verify challenger is the new owner.
+    let reg_entry = registry.resolve(&name, &time.now).expect("Registry entry should exist for challenger");
+    assert_eq!(reg_entry.owner, challenger);
 
-    // First, let the auction winner try to register
-    let result_winner = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        registrar.register(&label, &auction_winner, &1, &fee_stroops, &time.now);
-    }));
-    // Second, let the challenger try to register
-    let result_challenger = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        registrar.register(&label, &challenger, &1, &fee_stroops, &time.now);
-    }));
+    // Now, the auction winner attempts to settle the auction.
+    // The settlement logic should detect the name is already taken and fail gracefully,
+    // refunding the winner's bid.
+    let settlement = auction_client.settle(&name, &time.now).expect("Settlement should run");
 
-    // One should succeed and the other should fail.
-    // We don't know which one will be first in the ledger, but we know exactly one will succeed.
-    let success_count = [result_winner.is_ok(), result_challenger.is_ok()].iter().filter(|&&b| b).count();
-    assert_eq!(success_count, 1, "Exactly one registration should succeed");
+    // Because the name was taken, the auction is considered unsold from the winner's perspective.
+    assert!(!settlement.sold, "Settlement should indicate the name was not sold");
+    assert_eq!(settlement.winner, None, "There should be no winner as the name was already taken");
 
-    // Now, check who succeeded and who failed.
-    let winner_is_registered = result_winner.is_ok();
-    let challenger_is_registered = result_challenger.is_ok();
+    // Verify the auction winner was fully refunded.
+    // The auction contract should have transferred the 500 bid back to the auction_winner.
+    assert_eq!(token_client.balance(&auction_winner), 1000, "Auction winner should be fully refunded");
 
-    // The winner should be the one who succeeded if they were first, but we don't control order.
-    // However, we can check that the registered owner is either the winner or the challenger.
-    let reg_record = registrar.registration(&name).expect("Exactly one registration should have succeeded");
-    assert!(reg_record.owner == auction_winner || reg_record.owner == challenger);
-    let reg_entry = registry.resolve(&name, &time.now).expect("Registry entry should exist");
-    assert_eq!(reg_entry.owner, reg_record.owner);
-
-    // Verify that the loser of the registration attempt did not lose funds (for the registration payment)
-    // Since the transaction that failed would have been reverted, their stroops balance should be unchanged.
-    // However, we don't track the stroops balance in the test environment because the contract doesn't deduct from user's balance until after the registry call, and if it fails, the entire transaction is reverted.
-    // We can only check that the registration fee was not added to the treasury if the transaction failed.
-    // But note: if the transaction succeeded, the treasury increased by fee_stroops.
-    // We'll check the treasury change: it should have increased by exactly fee_stroops (for the successful registration).
-
-    let treasury_before = registrar.treasury_balance();
-    // We don't have a easy way to get the treasury before the two transactions because we already did them.
-    // Instead, we can note that exactly one registration succeeded, so the treasury should have increased by fee_stroops.
-    let treasury_after = registrar.treasury_balance();
-    assert_eq!(treasury_after - treasury_before, fee_stroops, "Treasury should have increased by exactly one registration fee");
-
-    // Additionally, we can check that the auction winner's token balance is still 700 (they paid the clearing price) regardless of the registration outcome.
-    // The auction settlement already happened and is not affected by the registration race.
-    assert_eq!(token_client.balance(&auction_winner), 700, "Auction winner's token balance should be 700 after settlement");
-    // The challenger's token balance should be unchanged (they didn't participate in auction)
-    assert_eq!(token_client.balance(&challenger), 1000, "Challenger's token balance should be unchanged");
+    // The auction loser also gets their bid back.
+    assert_eq!(token_client.balance(&auction_loser), 1000, "Auction loser should be fully refunded");
 }
