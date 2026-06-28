@@ -24,26 +24,18 @@ pub async fn run_resolve(
         .context("Failed to resolve name")?;
 
     if let Some(addr) = result.address {
-        let human = {
-            let mut lines = vec![format!("Name: {}", result.name), format!("Address: {addr}")];
-            if let Some(resolver) = result.resolver.clone() {
-                lines.push(format!("Resolver: {resolver}"));
-            }
-            if let Some(expiry) = result.expires_at {
-                lines.push(format!("Expires at: {expiry}"));
-            }
-            lines.join("\n")
-        };
-        emit(
-            output,
-            &human,
-            json!({
-                "name": result.name,
-                "address": addr,
-                "resolver": result.resolver,
-                "expires_at": result.expires_at,
-            }),
+        println!("Name: {}", result.name);
+        println!("Address: {}", addr);
+        if let Some(resolver) = result.resolver {
+            println!("Resolver: {}", resolver);
+        }
+        println!(
+            "Resolved via wildcard: {}",
+            if result.is_wildcard { "yes" } else { "no" }
         );
+        if let Some(expiry) = result.expires_at {
+            println!("Expires at: {}", expiry);
+        }
         Ok(())
     } else {
         let message = format!("Name '{}' not found or has no resolution", name);

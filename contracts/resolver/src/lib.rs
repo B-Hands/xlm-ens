@@ -45,10 +45,12 @@ pub struct ResolutionRecord {
     pub addresses: Map<String, String>, // chain_name -> address (e.g., "stellar" -> address, "ethereum" -> address)
     pub text_records: Map<String, String>,
     pub updated_at: u64,
+    pub is_wildcard: bool,
 }
 
 // For backwards compatibility, use a default chain identifier
 const DEFAULT_CHAIN: &str = "stellar";
+const DEFAULT_FALLBACK_DEPTH: u32 = 3;
 
 // #154: Maximum number of operations in a single batch_set call
 const MAX_BATCH_OPS: usize = 16;
@@ -68,7 +70,9 @@ enum DataKey {
     Forward(String),
     Reverse(String), // address -> name (for primary/reverse lookups)
     Primary(String), // address -> name (for primary names)
+    Wildcard(String),
     Registry,
+    SubdomainContract,
     Admin,
     ContractVersion,
 }
@@ -168,6 +172,23 @@ impl ResolverContract {
         env.storage()
             .persistent()
             .set(&DataKey::ContractVersion, &CONTRACT_VERSION);
+        extend_instance_ttl(&env);
+        Ok(())
+    }
+
+    pub fn set_subdomain_contract(
+        env: Env,
+        subdomain_contract: Address,
+    ) -> Result<(), ResolverError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(ResolverError::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::SubdomainContract, &subdomain_contract);
         extend_instance_ttl(&env);
         Ok(())
     }
@@ -276,6 +297,7 @@ impl ResolverContract {
             addresses,
             text_records,
             updated_at: now_unix,
+            is_wildcard: false,
         };
 
         let fwd_key = DataKey::Forward(name.clone());
@@ -445,6 +467,9 @@ impl ResolverContract {
         env.storage()
             .persistent()
             .remove(&DataKey::Forward(name.clone()));
+        env.storage()
+            .persistent()
+            .remove(&DataKey::Wildcard(name.clone()));
 
         // #141: Emit removal event
         env.events().publish(
@@ -498,7 +523,10 @@ impl ResolverContract {
     }
 
     pub fn resolve(env: Env, name: String) -> Option<ResolutionRecord> {
-        env.storage().persistent().get(&DataKey::Forward(name))
+        resolve_with_fallback(&env, &name).map(|(mut record, is_wildcard)| {
+            record.is_wildcard = is_wildcard;
+            record
+        })
     }
 
     // Helper method to get the default (Stellar) address for backwards compatibility
@@ -560,13 +588,27 @@ impl ResolverContract {
     pub fn batch_resolve(env: Env, names: Vec<String>) -> Vec<Option<ResolutionRecord>> {
         let mut out = Vec::new(&env);
         for name in names.iter() {
-            out.push_back(
-                env.storage()
-                    .persistent()
-                    .get(&DataKey::Forward(name.clone())),
-            );
+            out.push_back(Self::resolve(env.clone(), name.clone()));
         }
         out
+    }
+
+    pub fn set_wildcard_resolution(
+        env: Env,
+        name: String,
+        caller: Address,
+        enabled: bool,
+        now_unix: u64,
+    ) -> Result<(), ResolverError> {
+        validate_fqdn_soroban(&name).map_err(|_| ResolverError::Validation)?;
+        let record = get_record(&env, &name)?;
+        assert_owner(&env, &name, &record, &caller, now_unix)?;
+
+        let key = DataKey::Wildcard(name);
+        env.storage().persistent().set(&key, &enabled);
+        extend_persistent_ttl(&env, &key);
+        extend_instance_ttl(&env);
+        Ok(())
     }
 
     // Issue #321: Batch reverse lookup for multiple addresses
@@ -732,6 +774,76 @@ fn get_record(env: &Env, name: &String) -> Result<ResolutionRecord, ResolverErro
         .persistent()
         .get(&DataKey::Forward(name.clone()))
         .ok_or(ResolverError::RecordNotFound)
+}
+
+fn wildcard_resolution_enabled(env: &Env, name: &String) -> bool {
+    env.storage()
+        .persistent()
+        .get::<_, bool>(&DataKey::Wildcard(name.clone()))
+        .unwrap_or(true)
+}
+
+fn resolve_with_fallback(env: &Env, name: &String) -> Option<(ResolutionRecord, bool)> {
+    if validate_fqdn_soroban(name).is_err() {
+        return None;
+    }
+
+    let mut current = name.clone();
+    let mut hops: u32 = 0;
+    let max_hops = fallback_depth_limit(env);
+
+    loop {
+        if let Some(record) = env
+            .storage()
+            .persistent()
+            .get::<_, ResolutionRecord>(&DataKey::Forward(current.clone()))
+        {
+            if current == *name {
+                return Some((record, false));
+            }
+
+            if wildcard_resolution_enabled(env, &current) {
+                return Some((record, true));
+            }
+
+            return None;
+        }
+
+        if hops >= max_hops {
+            return None;
+        }
+
+        let Some(parent) = parent_name(env, &current) else {
+            return None;
+        };
+        current = parent;
+        hops += 1;
+    }
+}
+
+fn parent_name(env: &Env, name: &String) -> Option<String> {
+    let name_str = name.to_string();
+    let (parent, _) = name_str.split_once('.')?;
+    Some(String::from_str(env, parent))
+}
+
+fn fallback_depth_limit(env: &Env) -> u32 {
+    let Some(subdomain_contract) = env
+        .storage()
+        .instance()
+        .get::<_, Address>(&DataKey::SubdomainContract)
+    else {
+        return DEFAULT_FALLBACK_DEPTH;
+    };
+
+    match env.try_invoke_contract::<u32, Error>(
+        &subdomain_contract,
+        &Symbol::new(env, "max_depth"),
+        ().into_val(env),
+    ) {
+        Ok(Ok(depth)) => depth,
+        _ => DEFAULT_FALLBACK_DEPTH,
+    }
 }
 
 fn cleanup_stale_reverse(env: &Env, address: &String, name: &String) {

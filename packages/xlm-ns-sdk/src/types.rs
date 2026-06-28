@@ -256,6 +256,7 @@ pub struct ResolutionResult {
     pub address: Option<String>,
     pub resolver: Option<String>,
     pub expires_at: Option<u64>,
+    pub is_wildcard: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -417,6 +418,7 @@ pub struct ResolutionRecord {
     pub address: String,
     pub text_records: std::collections::HashMap<String, String>,
     pub updated_at: u64,
+    pub is_wildcard: bool,
 }
 
 // Auction types

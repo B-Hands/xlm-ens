@@ -9,6 +9,36 @@ mod tests {
 
     use crate::{BatchOp, ResolverContract, ResolverContractClient};
     use xlm_ns_registry::{RegistryContract, RegistryContractClient};
+    use xlm_ns_subdomain::{SubdomainContract, SubdomainContractClient};
+
+    fn setup_with_subdomain(depth: u32) -> (
+        Env,
+        ResolverContractClient,
+        RegistryContractClient,
+        SubdomainContractClient,
+        Address,
+        Address,
+    ) {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let registry_id = env.register(RegistryContract, ());
+        let resolver_id = env.register(ResolverContract, ());
+        let subdomain_id = env.register(SubdomainContract, ());
+
+        let registry = RegistryContractClient::new(&env, &registry_id);
+        let resolver = ResolverContractClient::new(&env, &resolver_id);
+        let subdomain = SubdomainContractClient::new(&env, &subdomain_id);
+
+        let admin = Address::generate(&env);
+        registry.initialize(&admin);
+        resolver.initialize(&registry_id, &admin);
+        subdomain.initialize(&admin);
+        subdomain.set_max_depth(&depth);
+        resolver.set_subdomain_contract(&subdomain_id);
+
+        (env, resolver, registry, subdomain, resolver_id, admin)
+    }
 
     #[test]
     fn persists_forward_reverse_and_primary_resolution_records() {
@@ -62,6 +92,131 @@ mod tests {
 
         assert_eq!(client.resolve(&name), None);
         assert_eq!(client.reverse(&address), None);
+    }
+
+    #[test]
+    fn resolve_falls_back_through_parent_chain_and_marks_wildcard() {
+        let (env, resolver, registry, _subdomain, resolver_id, _admin) = setup_with_subdomain(3);
+
+        let owner = Address::generate(&env);
+        let parent = String::from_str(&env, "alice.xlm");
+        let deep_child = String::from_str(&env, "app.pay.alice.xlm");
+        let address = String::from_str(&env, "GALICE");
+        let now = 100u64;
+
+        registry.register(
+            &parent,
+            &owner,
+            &Some(resolver_id.to_string()),
+            &None::<String>,
+            &now,
+            &1_000,
+            &2_000,
+        );
+
+        resolver.set_record(&parent, &owner, &address, &now);
+
+        let record = resolver.resolve(&deep_child).unwrap();
+        assert_eq!(
+            record.addresses.get(String::from_str(&env, "stellar")),
+            Some(address)
+        );
+        assert!(record.is_wildcard);
+        assert_eq!(record.owner, owner);
+    }
+
+    #[test]
+    fn wildcard_resolution_can_be_disabled_by_owner() {
+        let (env, resolver, registry, _subdomain, resolver_id, _admin) = setup_with_subdomain(3);
+
+        let owner = Address::generate(&env);
+        let parent = String::from_str(&env, "alice.xlm");
+        let child = String::from_str(&env, "pay.alice.xlm");
+        let address = String::from_str(&env, "GALICE");
+        let now = 110u64;
+
+        registry.register(
+            &parent,
+            &owner,
+            &Some(resolver_id.to_string()),
+            &None::<String>,
+            &now,
+            &1_000,
+            &2_000,
+        );
+
+        resolver.set_record(&parent, &owner, &address, &now);
+        resolver.set_wildcard_resolution(&parent, &owner, &false, &now + 1);
+
+        assert_eq!(resolver.resolve(&child), None);
+        let exact = resolver.resolve(&parent).unwrap();
+        assert!(!exact.is_wildcard);
+    }
+
+    #[test]
+    fn explicit_subdomain_records_override_wildcard_fallback() {
+        let (env, resolver, registry, _subdomain, resolver_id, _admin) = setup_with_subdomain(3);
+
+        let owner = Address::generate(&env);
+        let parent = String::from_str(&env, "alice.xlm");
+        let child = String::from_str(&env, "pay.alice.xlm");
+        let parent_address = String::from_str(&env, "GALICE");
+        let child_address = String::from_str(&env, "GPAYALICE");
+        let now = 120u64;
+
+        registry.register(
+            &parent,
+            &owner,
+            &Some(resolver_id.to_string()),
+            &None::<String>,
+            &now,
+            &1_000,
+            &2_000,
+        );
+        registry.register(
+            &child,
+            &owner,
+            &Some(resolver_id.to_string()),
+            &None::<String>,
+            &now,
+            &1_000,
+            &2_000,
+        );
+
+        resolver.set_record(&parent, &owner, &parent_address, &now);
+        resolver.set_record(&child, &owner, &child_address, &now + 1);
+
+        let record = resolver.resolve(&child).unwrap();
+        assert_eq!(
+            record.addresses.get(String::from_str(&env, "stellar")),
+            Some(child_address)
+        );
+        assert!(!record.is_wildcard);
+    }
+
+    #[test]
+    fn fallback_resolution_respects_depth_limit() {
+        let (env, resolver, registry, _subdomain, resolver_id, _admin) = setup_with_subdomain(1);
+
+        let owner = Address::generate(&env);
+        let parent = String::from_str(&env, "alice.xlm");
+        let deep_child = String::from_str(&env, "app.pay.alice.xlm");
+        let address = String::from_str(&env, "GALICE");
+        let now = 130u64;
+
+        registry.register(
+            &parent,
+            &owner,
+            &Some(resolver_id.to_string()),
+            &None::<String>,
+            &now,
+            &1_000,
+            &2_000,
+        );
+
+        resolver.set_record(&parent, &owner, &address, &now);
+
+        assert_eq!(resolver.resolve(&deep_child), None);
     }
 
     #[test]

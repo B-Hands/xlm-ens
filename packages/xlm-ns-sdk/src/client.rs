@@ -321,6 +321,7 @@ impl XlmNsClient {
             address: entry.target_address,
             resolver: entry.resolver.clone(),
             expires_at: Some(entry.expires_at),
+            is_wildcard: false,
         };
 
         if let Some(_resolver_id) = entry.resolver.clone() {
@@ -333,6 +334,7 @@ impl XlmNsClient {
                 .await?
             {
                 result.address = Some(record.address);
+                result.is_wildcard = false;
             }
         }
 
@@ -412,6 +414,7 @@ impl XlmNsClient {
             address: format!("GDRA...RESOLVED_ADDR:{name}:{ledger}"),
             text_records: make_text_records(name),
             updated_at: MOCK_REFERENCE_TIMESTAMP,
+            is_wildcard: false,
         }
     }
 
@@ -475,12 +478,14 @@ impl XlmNsClient {
                 address: Some(owner.to_string()),
                 resolver: self.resolver_contract_id.clone(),
                 expires_at: Some(MOCK_REFERENCE_TIMESTAMP + SECONDS_PER_YEAR),
+                is_wildcard: false,
             },
             ResolutionResult {
                 name: "bob.xlm".to_string(),
                 address: Some(owner.to_string()),
                 resolver: self.resolver_contract_id.clone(),
                 expires_at: Some(MOCK_REFERENCE_TIMESTAMP + (2 * SECONDS_PER_YEAR)),
+                is_wildcard: false,
             },
         ];
         let total = all_items.len();

@@ -14,3 +14,4 @@ xlm-ns-common = { path = "../../packages/xlm-ns-common", features = ["soroban"] 
 [dev-dependencies]
 soroban-sdk = { version = "=26.0.0-rc.1", features = ["testutils"] }
 xlm-ns-registry = { path = "../registry" }
+xlm-ns-subdomain = { path = "../subdomain" }

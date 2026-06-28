@@ -114,6 +114,13 @@ impl SubdomainContract {
         Ok(())
     }
 
+    pub fn max_depth(env: Env) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::MaxDepth)
+            .unwrap_or(3)
+    }
+
     pub fn upgrade(
         env: Env,
         new_wasm_hash: Bytes,
