@@ -443,10 +443,13 @@ async fn run() -> anyhow::Result<()> {
             name,
             owner,
             signer,
-        } => commands::register::run_register(config, &name, &owner, resolve_signer(signer)?).await,
-        Commands::Resolve { name } => commands::resolve::run_resolve(config, &name).await,
+        } => {
+            commands::register::run_register(config, cli.output, &name, &owner, resolve_signer(signer)?)
+                .await
+        }
+        Commands::Resolve { name } => commands::resolve::run_resolve(config, cli.output, &name).await,
         Commands::ReverseResolve { address } => {
-            commands::reverse::run_reverse(config, &address).await
+            commands::reverse::run_reverse(config, cli.output, &address).await
         }
         Commands::Text(sub) => match sub {
             TextCommand::Get { name, key } => commands::text::run_get(config, &name, &key).await,
@@ -462,14 +465,23 @@ async fn run() -> anyhow::Result<()> {
             new_owner,
             signer,
         } => {
-            commands::transfer::run_transfer(config, &name, &new_owner, resolve_signer(signer)?)
+            commands::transfer::run_transfer(
+                config,
+                cli.output,
+                &name,
+                &new_owner,
+                resolve_signer(signer)?,
+            )
                 .await
         }
         Commands::Renew {
             name,
             years,
             signer,
-        } => commands::renew::run_renew(config, &name, years, resolve_signer(signer)?).await,
+        } => {
+            commands::renew::run_renew(config, cli.output, &name, years, resolve_signer(signer)?)
+                .await
+        }
         Commands::Auction(sub) => match sub {
             AuctionCommands::Create {
                 name,
