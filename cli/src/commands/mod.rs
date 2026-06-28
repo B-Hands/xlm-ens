@@ -16,3 +16,4 @@ pub mod text;
 pub mod transfer;
 pub mod validate;
 pub mod whois;
+pub mod watch;
