@@ -39,38 +39,38 @@ echo "✓ Registry: $REGISTRY_ID"
 
 # The registrar needs the registry address at initialization.
 REGISTRAR_ID=$(soroban contract deploy --wasm "$REGISTRAR_WASM" --source default)
-soroban contract invoke --id "$REGISTRAR_ID" --source default -- 
-  initialize --admin "$(soroban config identity address default)" --registry_id "$REGISTRY_ID"
+soroban contract invoke --id "$REGISTRAR_ID" --source default -- \
+  initialize --registry "$REGISTRY_ID" --admin "$(soroban config identity address default)"
 echo "✓ Registrar: $REGISTRAR_ID"
 
 # The resolver also needs the registry address.
 RESOLVER_ID=$(soroban contract deploy --wasm "$RESOLVER_WASM" --source default)
-soroban contract invoke --id "$RESOLVER_ID" --source default -- 
-  initialize --admin "$(soroban config identity address default)" --registry_id "$REGISTRY_ID"
+soroban contract invoke --id "$RESOLVER_ID" --source default -- \
+  initialize --registry_id "$REGISTRY_ID"
 echo "✓ Resolver: $RESOLVER_ID"
 
 # The auction contract needs the registrar and registry addresses.
 AUCTION_ID=$(soroban contract deploy --wasm "$AUCTION_WASM" --source default)
-soroban contract invoke --id "$AUCTION_ID" --source default -- 
-  initialize --admin "$(soroban config identity address default)" --registry_id "$REGISTRY_ID" --registrar_id "$REGISTRAR_ID"
+soroban contract invoke --id "$AUCTION_ID" --source default -- \
+  initialize --admin "$(soroban config identity address default)"
 echo "✓ Auction: $AUCTION_ID"
 
 # The subdomain contract needs the registrar address.
 SUBDOMAIN_ID=$(soroban contract deploy --wasm "$SUBDOMAIN_WASM" --source default)
-soroban contract invoke --id "$SUBDOMAIN_ID" --source default -- 
-  initialize --admin "$(soroban config identity address default)" --registrar_id "$REGISTRAR_ID"
+soroban contract invoke --id "$SUBDOMAIN_ID" --source default -- \
+  initialize --admin "$(soroban config identity address default)"
 echo "✓ Subdomain: $SUBDOMAIN_ID"
 
 # The NFT contract needs the registry address.
 NFT_ID=$(soroban contract deploy --wasm "$NFT_WASM" --source default)
-soroban contract invoke --id "$NFT_ID" --source default -- 
-  initialize --admin "$(soroban config identity address default)" --registry_id "$REGISTRY_ID"
+soroban contract invoke --id "$NFT_ID" --source default -- \
+  initialize --admin "$(soroban config identity address default)"
 echo "✓ NFT: $NFT_ID"
 
 # The bridge contract needs the resolver address.
-BRIDGE_ID=$(soroban contract deploy --wasm "$BRIDGE_WASM" --source default)
-soroban contract invoke --id "$BRIDGE_ID" --source default -- 
-  initialize --admin "$(soroban config identity address default)" --resolver_id "$RESOLVER_ID"
+BRIDGE_ID=$(soroban contract deploy --wasm "$BRIDGE_WASM" --source default) 
+soroban contract invoke --id "$BRIDGE_ID" --source default -- \
+  initialize --admin "$(soroban config identity address default)"
 echo "✓ Bridge: $BRIDGE_ID"
 
 echo "✓ All contracts deployed successfully."
