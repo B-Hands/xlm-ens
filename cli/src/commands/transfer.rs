@@ -44,7 +44,9 @@ pub async fn run_transfer(
         _ => None,
     };
 
-    human_lines.push(format!("SUCCESS: {name} ownership transferred to {new_owner}"));
+    human_lines.push(format!(
+        "SUCCESS: {name} ownership transferred to {new_owner}"
+    ));
     human_lines.push(format!("  Status: {}", submission.status));
     human_lines.push(format!("  Transaction Hash: {}", submission.tx_hash));
     match &verified_owner {

@@ -158,10 +158,7 @@ pub async fn run(config: NetworkConfig, command: WatchCommand) -> anyhow::Result
                         "yellow",
                     ),
                     ExpiryStatus::InGracePeriod(expiry) => (
-                        format!(
-                            "In grace period (expired on {})",
-                            expiry.format("%Y-%m-%d")
-                        ),
+                        format!("In grace period (expired on {})", expiry.format("%Y-%m-%d")),
                         "red",
                     ),
                     ExpiryStatus::Expired => ("Expired and available".to_string(), "bright-black"),

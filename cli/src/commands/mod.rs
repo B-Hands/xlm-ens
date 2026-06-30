@@ -15,5 +15,5 @@ pub mod subdomain;
 pub mod text;
 pub mod transfer;
 pub mod validate;
-pub mod whois;
 pub mod watch;
+pub mod whois;

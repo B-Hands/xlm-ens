@@ -81,9 +81,12 @@ enum Commands {
     /// Register a new name.
     Register {
         /// Name to register
-        name: String,
+        name: Option<String>,
         /// Owner address
-        owner: String,
+        owner: Option<String>,
+        /// Launch the guided registration flow.
+        #[arg(long)]
+        interactive: bool,
         /// Signer profile to use for submission
         #[arg(long)]
         signer: Option<String>,
@@ -447,12 +450,22 @@ async fn run() -> anyhow::Result<()> {
         Commands::Register {
             name,
             owner,
+            interactive,
             signer,
         } => {
-            commands::register::run_register(config, cli.output, &name, &owner, resolve_signer(signer)?)
-                .await
+            commands::register::run_register(
+                config,
+                cli.output,
+                name,
+                owner,
+                resolve_signer(signer)?,
+                interactive,
+            )
+            .await
         }
-        Commands::Resolve { name } => commands::resolve::run_resolve(config, cli.output, &name).await,
+        Commands::Resolve { name } => {
+            commands::resolve::run_resolve(config, cli.output, &name).await
+        }
         Commands::ReverseResolve { address } => {
             commands::reverse::run_reverse(config, cli.output, &address).await
         }
@@ -489,7 +502,7 @@ async fn run() -> anyhow::Result<()> {
                 &new_owner,
                 resolve_signer(signer)?,
             )
-                .await
+            .await
         }
         Commands::Renew {
             name,
@@ -621,8 +634,7 @@ async fn run() -> anyhow::Result<()> {
                 .await
             }
             ConfigCommands::Show { path, network } => {
-                commands::config::run_show(path.or(cli.config.clone()), network, cli.output)
-                    .await
+                commands::config::run_show(path.or(cli.config.clone()), network, cli.output).await
             }
         },
         Commands::Whois { name } => commands::whois::run_whois(config, cli.output, &name).await,
@@ -709,8 +721,9 @@ mod tests {
     #[test]
     fn register_rejects_irrelevant_resolver_flag() {
         let cmd = Commands::Register {
-            name: "test.xlm".to_string(),
-            owner: "GDRA111".to_string(),
+            name: Some("test.xlm".to_string()),
+            owner: Some("GDRA111".to_string()),
+            interactive: false,
             signer: None,
         };
         let overrides = ContractOverrides {
@@ -730,8 +743,9 @@ mod tests {
     #[test]
     fn register_rejects_irrelevant_registry_flag() {
         let cmd = Commands::Register {
-            name: "test.xlm".to_string(),
-            owner: "GDRA111".to_string(),
+            name: Some("test.xlm".to_string()),
+            owner: Some("GDRA111".to_string()),
+            interactive: false,
             signer: None,
         };
         let overrides = ContractOverrides {
@@ -750,8 +764,9 @@ mod tests {
     #[test]
     fn register_fails_when_registrar_is_missing() {
         let cmd = Commands::Register {
-            name: "test.xlm".to_string(),
-            owner: "GDRA111".to_string(),
+            name: Some("test.xlm".to_string()),
+            owner: Some("GDRA111".to_string()),
+            interactive: false,
             signer: None,
         };
         let result = validate_contract_policy(
@@ -770,8 +785,9 @@ mod tests {
     #[test]
     fn register_passes_with_only_registrar_flag() {
         let cmd = Commands::Register {
-            name: "test.xlm".to_string(),
-            owner: "GDRA111".to_string(),
+            name: Some("test.xlm".to_string()),
+            owner: Some("GDRA111".to_string()),
+            interactive: false,
             signer: None,
         };
         let overrides = ContractOverrides {

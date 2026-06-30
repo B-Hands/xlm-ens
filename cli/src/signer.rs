@@ -123,8 +123,8 @@ impl fmt::Display for SigningKeyError {
 impl std::error::Error for SigningKeyError {}
 
 pub fn load_signing_key(secret: &str) -> Result<SigningKey, SigningKeyError> {
-    let keypair = stellar_sdk::SecretKey::from_str(secret)
-        .map_err(|_| SigningKeyError::InvalidSecret)?;
+    let keypair =
+        stellar_sdk::SecretKey::from_str(secret).map_err(|_| SigningKeyError::InvalidSecret)?;
     let public_address = keypair.public_key().to_string();
     Ok(SigningKey {
         keypair,

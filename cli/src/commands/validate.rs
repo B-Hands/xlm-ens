@@ -61,10 +61,7 @@ fn validate_contract_id_formats(config: &NetworkConfig) -> Vec<ValidationResult>
             if re.is_match(id) {
                 (ValidationStatus::Pass, String::new())
             } else {
-                (
-                    ValidationStatus::Fail,
-                    format!("invalid format for {name}"),
-                )
+                (ValidationStatus::Fail, format!("invalid format for {name}"))
             }
         } else {
             (ValidationStatus::Fail, format!("{name} not configured"))

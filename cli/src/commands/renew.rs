@@ -50,7 +50,10 @@ pub async fn run_renew(
             human_lines.push(format!("  Fee Paid: {} XLM", receipt.fee_paid));
             human_lines.push(format!("  New Expiry: {}", receipt.new_expiry));
             human_lines.push(format!("  Status: {}", receipt.submission.status));
-            human_lines.push(format!("  Transaction Hash: {}", receipt.submission.tx_hash));
+            human_lines.push(format!(
+                "  Transaction Hash: {}",
+                receipt.submission.tx_hash
+            ));
 
             emit(
                 output,

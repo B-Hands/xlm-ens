@@ -1,5 +1,5 @@
 use clap::{CommandFactory, Subcommand};
-use clap_complete::{Shell, generate, generate_to};
+use clap_complete::{generate, generate_to, Shell};
 use std::env;
 use std::fs;
 use std::io;
