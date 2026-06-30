@@ -20,6 +20,9 @@ pub const MIN_GRACE_PERIOD_SECONDS: u64 = 86_400; // 1 day
 pub const QUOTE_VALIDITY_SECONDS: u64 = 300; // 5 minutes
 pub const MAX_GRACE_PERIOD_SECONDS: u64 = 31_536_000; // 365 days
 
+pub const DEFAULT_MIN_RENEWAL_YEARS: u64 = 1;
+pub const MAX_ALLOWED_RENEWAL_YEARS: u64 = 10;
+
 pub const ADMIN_RECOVERY_SUPPORTED: bool = false;
 pub const CONTRACT_VERSION: u32 = 1;
 

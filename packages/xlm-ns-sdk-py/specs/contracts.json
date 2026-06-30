@@ -1,0 +1,92 @@
+{
+  "contracts": [
+    {
+      "name": "registry",
+      "class_name": "RegistryContractClient",
+      "methods": [
+        {"name": "resolve", "mode": "read"},
+        {"name": "get_registry_metadata", "mode": "read"},
+        {"name": "get_owner_portfolio", "mode": "read"},
+        {"name": "get_registration", "mode": "read"},
+        {"name": "list_registrations_by_owner", "mode": "read"},
+        {"name": "list_registrations_by_owner_page", "mode": "read"},
+        {"name": "transfer", "mode": "write"},
+        {"name": "set_resolver", "mode": "write"}
+      ]
+    },
+    {
+      "name": "resolver",
+      "class_name": "ResolverContractClient",
+      "methods": [
+        {"name": "reverse_resolve", "mode": "read"},
+        {"name": "reverse_lookup", "mode": "read"},
+        {"name": "get_primary_name", "mode": "read"},
+        {"name": "get_text_records", "mode": "read"},
+        {"name": "get_text_record", "mode": "read"},
+        {"name": "set_text_record", "mode": "write"},
+        {"name": "set_text_records", "mode": "write"}
+      ]
+    },
+    {
+      "name": "registrar",
+      "class_name": "RegistrarContractClient",
+      "methods": [
+        {"name": "quote_registration", "mode": "read"},
+        {"name": "register", "mode": "write"},
+        {"name": "renew", "mode": "write"},
+        {"name": "simulate_register", "mode": "read"},
+        {"name": "simulate_renew", "mode": "read"},
+        {"name": "get_treasury_balance", "mode": "read"},
+        {"name": "get_fee_metrics", "mode": "read"}
+      ]
+    },
+    {
+      "name": "subdomain",
+      "class_name": "SubdomainContractClient",
+      "methods": [
+        {"name": "register_parent", "mode": "write"},
+        {"name": "add_controller", "mode": "write"},
+        {"name": "create_subdomain", "mode": "write"},
+        {"name": "transfer_subdomain", "mode": "write"},
+        {"name": "get_subdomains", "mode": "read"}
+      ]
+    },
+    {
+      "name": "bridge",
+      "class_name": "BridgeContractClient",
+      "methods": [
+        {"name": "register_chain", "mode": "write"},
+        {"name": "get_route", "mode": "read"},
+        {"name": "get_bridge_routes", "mode": "read"},
+        {"name": "build_message", "mode": "read"}
+      ]
+    },
+    {
+      "name": "nft",
+      "class_name": "NftContractClient",
+      "methods": [
+        {"name": "mint_nft", "mode": "write"},
+        {"name": "approve_nft", "mode": "write"},
+        {"name": "transfer_nft", "mode": "write"},
+        {"name": "get_nft", "mode": "read"},
+        {"name": "get_nft_owner", "mode": "read"},
+        {"name": "get_nft_metadata", "mode": "read"},
+        {"name": "get_nft_record", "mode": "read"}
+      ]
+    },
+    {
+      "name": "auction",
+      "class_name": "AuctionContractClient",
+      "methods": [
+        {"name": "get_auction", "mode": "read"},
+        {"name": "get_auction_state", "mode": "read"},
+        {"name": "create_auction", "mode": "write"},
+        {"name": "bid_auction", "mode": "write"},
+        {"name": "settle_auction", "mode": "write"},
+        {"name": "simulate_and_submit", "mode": "write"},
+        {"name": "load_reserved_manifest", "mode": "write"}
+      ]
+    }
+  ]
+}
+

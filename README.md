@@ -111,6 +111,9 @@ stubs:
 - `packages/xlm-ns-sdk`
   A lightweight Rust SDK surface for future wallet and dapp integration.
 
+- `packages/xlm-ns-sdk-py`
+  Typed Python bindings for analytics, notebooks, and automation workflows.
+
 ### Operator tooling
 
 - `cli/`

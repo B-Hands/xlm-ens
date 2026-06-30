@@ -82,9 +82,12 @@ enum Commands {
     /// Register a new name.
     Register {
         /// Name to register
-        name: String,
+        name: Option<String>,
         /// Owner address
-        owner: String,
+        owner: Option<String>,
+        /// Launch the guided registration flow.
+        #[arg(long)]
+        interactive: bool,
         /// Signer profile to use for submission
         #[arg(long)]
         signer: Option<String>,
@@ -448,6 +451,7 @@ async fn run() -> anyhow::Result<()> {
         Commands::Register {
             name,
             owner,
+            interactive,
             signer,
         } => {
             commands::register::run_register(
@@ -883,8 +887,9 @@ mod tests {
     #[test]
     fn register_rejects_irrelevant_resolver_flag() {
         let cmd = Commands::Register {
-            name: "test.xlm".to_string(),
-            owner: "GDRA111".to_string(),
+            name: Some("test.xlm".to_string()),
+            owner: Some("GDRA111".to_string()),
+            interactive: false,
             signer: None,
         };
         let overrides = ContractOverrides {
@@ -904,8 +909,9 @@ mod tests {
     #[test]
     fn register_rejects_irrelevant_registry_flag() {
         let cmd = Commands::Register {
-            name: "test.xlm".to_string(),
-            owner: "GDRA111".to_string(),
+            name: Some("test.xlm".to_string()),
+            owner: Some("GDRA111".to_string()),
+            interactive: false,
             signer: None,
         };
         let overrides = ContractOverrides {
@@ -924,8 +930,9 @@ mod tests {
     #[test]
     fn register_fails_when_registrar_is_missing() {
         let cmd = Commands::Register {
-            name: "test.xlm".to_string(),
-            owner: "GDRA111".to_string(),
+            name: Some("test.xlm".to_string()),
+            owner: Some("GDRA111".to_string()),
+            interactive: false,
             signer: None,
         };
         let result = validate_contract_policy(
@@ -944,8 +951,9 @@ mod tests {
     #[test]
     fn register_passes_with_only_registrar_flag() {
         let cmd = Commands::Register {
-            name: "test.xlm".to_string(),
-            owner: "GDRA111".to_string(),
+            name: Some("test.xlm".to_string()),
+            owner: Some("GDRA111".to_string()),
+            interactive: false,
             signer: None,
         };
         let overrides = ContractOverrides {
