@@ -1,5 +1,5 @@
 use crate::config::NetworkConfig;
-use crate::output::{emit, emit_error, OutputFormat};
+use crate::output::{emit, OutputFormat};
 use serde_json::json;
 use xlm_ns_sdk::client::XlmNsClient;
 
@@ -48,15 +48,7 @@ pub async fn run_inspect(
         }
         Err(err) => {
             let message = format!("ERROR: Failed to inspect token {token_id}: {err}");
-            emit_error(
-                output,
-                &message,
-                json!({
-                    "error": message,
-                    "token_id": token_id,
-                    "nft_contract_id": nft_contract_id,
-                }),
-            );
+            return Err(anyhow::anyhow!(message));
         }
     }
     Ok(())

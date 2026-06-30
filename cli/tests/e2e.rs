@@ -397,7 +397,8 @@ fn missing_arguments_and_invalid_inputs_fail_cleanly() {
         .args(&args)
         .assert()
         .failure()
-        .stderr(predicate::str::contains("Failed to submit transfer"))
+        .stderr(predicate::str::contains("Error:"))
+        .stderr(predicate::str::contains("Suggestion:"))
         .stderr(predicate::str::contains("new_owner is invalid"));
 
     let mut renew_args = base_args();
@@ -406,7 +407,7 @@ fn missing_arguments_and_invalid_inputs_fail_cleanly() {
         .args(&renew_args)
         .assert()
         .failure()
-        .stderr(predicate::str::contains(
-            "is not registered and cannot be renewed",
-        ));
+        .stderr(predicate::str::contains("Error:"))
+        .stderr(predicate::str::contains("Suggestion:"))
+        .stderr(predicate::str::contains("not registered"));
 }

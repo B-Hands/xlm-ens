@@ -72,11 +72,6 @@ pub async fn run_renew(
         }
         None => {
             let message = format!("Name '{}' is not registered and cannot be renewed.", name);
-            emit_error(
-                output,
-                &message,
-                json!({"error": message.clone(), "name": name}),
-            );
             return Err(anyhow::anyhow!(message));
         }
     }

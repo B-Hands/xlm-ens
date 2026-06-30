@@ -149,18 +149,7 @@ pub async fn run_portfolio(
                 }
                 Err(err) => {
                     let message = format!("ERROR: Failed to fetch portfolio for {owner}: {err}");
-                    emit_error(
-                        output,
-                        &message,
-                        json!({
-                            "error": message,
-                            "owner": owner,
-                            "registry_contract_id": config.registry_contract_id,
-                            "rpc_url": config.rpc_url,
-                            "network": config.network.as_str(),
-                        }),
-                    );
-                    return Ok(());
+                    return Err(anyhow::anyhow!(message));
                 }
             }
         };

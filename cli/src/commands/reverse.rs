@@ -39,7 +39,7 @@ pub async fn run_reverse(
         );
     } else {
         let message = format!("{} -> [NO PRIMARY NAME]", result.address);
-        emit_error(output, &message, json!({"address": result.address}));
+        return Err(anyhow::anyhow!(message));
     }
 
     Ok(())

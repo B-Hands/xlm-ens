@@ -1,5 +1,6 @@
 mod commands;
 mod config;
+mod error;
 mod export;
 mod output;
 mod signer;
@@ -446,7 +447,7 @@ async fn run() -> anyhow::Result<()> {
         return Err(anyhow::anyhow!(err));
     }
 
-    match cli.command {
+    match cli.command.clone() {
         Commands::Register {
             name,
             owner,
@@ -456,10 +457,9 @@ async fn run() -> anyhow::Result<()> {
             commands::register::run_register(
                 config,
                 cli.output,
-                name,
-                owner,
+                &name,
+                &owner,
                 resolve_signer(signer)?,
-                interactive,
             )
             .await
         }
@@ -676,6 +676,172 @@ async fn main() {
     if let Err(e) = run().await {
         print_human_err(&format!("Error: {:?}", e));
         process::exit(1);
+    }
+}
+
+fn error_context(command: &Commands) -> error::ErrorContext {
+    match command {
+        Commands::Register { name, .. } => error::ErrorContext {
+            domain: error::ErrorDomain::Registrar,
+            subject: Some(name.clone()),
+            subject_kind: error::SubjectKind::Name,
+            command: "register",
+        },
+        Commands::Resolve { name } => error::ErrorContext {
+            domain: error::ErrorDomain::Resolver,
+            subject: Some(name.clone()),
+            subject_kind: error::SubjectKind::Name,
+            command: "resolve",
+        },
+        Commands::ReverseResolve { address } => error::ErrorContext {
+            domain: error::ErrorDomain::Resolver,
+            subject: Some(address.clone()),
+            subject_kind: error::SubjectKind::Address,
+            command: "reverse-resolve",
+        },
+        Commands::Text(sub) => match sub {
+            TextCommand::Get { name, .. } | TextCommand::Set { name, .. } => error::ErrorContext {
+                domain: error::ErrorDomain::Resolver,
+                subject: Some(name.clone()),
+                subject_kind: error::SubjectKind::Name,
+                command: "text",
+            },
+        },
+        Commands::Transfer { name, .. } => error::ErrorContext {
+            domain: error::ErrorDomain::Registry,
+            subject: Some(name.clone()),
+            subject_kind: error::SubjectKind::Name,
+            command: "transfer",
+        },
+        Commands::Renew { name, .. } => error::ErrorContext {
+            domain: error::ErrorDomain::Registrar,
+            subject: Some(name.clone()),
+            subject_kind: error::SubjectKind::Name,
+            command: "renew",
+        },
+        Commands::Auction(sub) => match sub {
+            AuctionCommands::Create { name, .. }
+            | AuctionCommands::Bid { name, .. }
+            | AuctionCommands::Inspect { name }
+            | AuctionCommands::Settle { name, .. }
+            | AuctionCommands::Export { name, .. }
+            | AuctionCommands::Import { name, .. } => error::ErrorContext {
+                domain: error::ErrorDomain::Auction,
+                subject: Some(name.clone()),
+                subject_kind: error::SubjectKind::Name,
+                command: "auction",
+            },
+        },
+        Commands::Bridge(sub) => match sub {
+            BridgeCommands::Register { chain }
+            | BridgeCommands::Inspect { chain }
+            | BridgeCommands::Payload { chain, .. } => error::ErrorContext {
+                domain: error::ErrorDomain::Bridge,
+                subject: Some(chain.clone()),
+                subject_kind: error::SubjectKind::Chain,
+                command: "bridge",
+            },
+            BridgeCommands::TestVectors => error::ErrorContext {
+                domain: error::ErrorDomain::Bridge,
+                subject: None,
+                subject_kind: error::SubjectKind::Unknown,
+                command: "bridge",
+            },
+        },
+        Commands::Subdomain(sub) => match sub {
+            SubdomainCommands::RegisterParent { parent, .. } => error::ErrorContext {
+                domain: error::ErrorDomain::Subdomain,
+                subject: Some(parent.clone()),
+                subject_kind: error::SubjectKind::Name,
+                command: "subdomain",
+            },
+            SubdomainCommands::AddController { parent, .. } => error::ErrorContext {
+                domain: error::ErrorDomain::Subdomain,
+                subject: Some(parent.clone()),
+                subject_kind: error::SubjectKind::Name,
+                command: "subdomain",
+            },
+            SubdomainCommands::Create { label, parent, .. } => error::ErrorContext {
+                domain: error::ErrorDomain::Subdomain,
+                subject: Some(format!("{label}.{parent}")),
+                subject_kind: error::SubjectKind::Name,
+                command: "subdomain",
+            },
+            SubdomainCommands::Transfer { fqdn, .. } => error::ErrorContext {
+                domain: error::ErrorDomain::Subdomain,
+                subject: Some(fqdn.clone()),
+                subject_kind: error::SubjectKind::Name,
+                command: "subdomain",
+            },
+        },
+        Commands::Nft(NftCommands::Inspect { token_id }) => error::ErrorContext {
+            domain: error::ErrorDomain::Nft,
+            subject: Some(token_id.clone()),
+            subject_kind: error::SubjectKind::TokenId,
+            command: "nft",
+        },
+        Commands::Config(_) => error::ErrorContext {
+            domain: error::ErrorDomain::General,
+            subject: None,
+            subject_kind: error::SubjectKind::Unknown,
+            command: "config",
+        },
+        Commands::Watch(_) => error::ErrorContext {
+            domain: error::ErrorDomain::Registry,
+            subject: None,
+            subject_kind: error::SubjectKind::Unknown,
+            command: "watch",
+        },
+        Commands::Whois { name } => error::ErrorContext {
+            domain: error::ErrorDomain::Registry,
+            subject: Some(name.clone()),
+            subject_kind: error::SubjectKind::Name,
+            command: "whois",
+        },
+        Commands::Portfolio { owner, .. } => error::ErrorContext {
+            domain: error::ErrorDomain::Registry,
+            subject: Some(owner.clone()),
+            subject_kind: error::SubjectKind::Address,
+            command: "portfolio",
+        },
+        Commands::Quote { name, .. } => error::ErrorContext {
+            domain: error::ErrorDomain::Registrar,
+            subject: Some(name.clone()),
+            subject_kind: error::SubjectKind::Name,
+            command: "quote",
+        },
+        Commands::Bulk(sub) => match sub {
+            BulkCommands::Register { file } => error::ErrorContext {
+                domain: error::ErrorDomain::Registrar,
+                subject: Some(file.display().to_string()),
+                subject_kind: error::SubjectKind::File,
+                command: "bulk register",
+            },
+            BulkCommands::Renew { file } => error::ErrorContext {
+                domain: error::ErrorDomain::Registrar,
+                subject: Some(file.display().to_string()),
+                subject_kind: error::SubjectKind::File,
+                command: "bulk renew",
+            },
+        },
+        Commands::Availability { name } => error::ErrorContext {
+            domain: error::ErrorDomain::Registry,
+            subject: Some(name.clone()),
+            subject_kind: error::SubjectKind::Name,
+            command: "availability",
+        },
+        Commands::Healthcheck => error::ErrorContext {
+            domain: error::ErrorDomain::General,
+            subject: None,
+            subject_kind: error::SubjectKind::Unknown,
+            command: "healthcheck",
+        },
+        Commands::Completions(_) => error::ErrorContext {
+            domain: error::ErrorDomain::General,
+            subject: None,
+            subject_kind: error::SubjectKind::Unknown,
+            command: "completions",
+        },
     }
 }
 
