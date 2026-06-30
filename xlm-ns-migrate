@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Wrapper script for xlm-ns migrate to fulfill the xlm-ns-migrate executable requirement
+
+# Execute the xlm-ns CLI with the migrate subcommand, passing all arguments
+cargo run --manifest-path "$(dirname "$0")/cli/Cargo.toml" --bin xlm-ns-cli -- migrate "$@"

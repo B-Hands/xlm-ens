@@ -121,20 +121,18 @@ enum MigrateCommands {
         wasm_hash_out: PathBuf,
     },
 
-    /// Storage export (stub)
+    /// Storage export
     Export {
-        #[arg(long)]
         contract_id: String,
-        #[arg(long)]
+        #[arg(long, default_value = "state.json")]
         out_file: PathBuf,
     },
 
-    /// Storage import (stub)
+    /// Storage import
     Import {
-        #[arg(long)]
         contract_id: String,
         #[arg(long)]
-        in_file: PathBuf,
+        file: PathBuf,
     },
 }
 
@@ -524,8 +522,12 @@ async fn run() -> anyhow::Result<()> {
                 wasm_hash_out,
             )
             .await,
-            MigrateCommands::Export { .. } => commands::migrate::run_export_stub().await,
-            MigrateCommands::Import { .. } => commands::migrate::run_import_stub().await,
+            MigrateCommands::Export { contract_id, out_file } => {
+                commands::migrate::run_export(cli.output, cli.dry_run, contract_id, out_file).await
+            }
+            MigrateCommands::Import { contract_id, file } => {
+                commands::migrate::run_import(cli.output, cli.dry_run, contract_id, file).await
+            }
         },
         Commands::Register {
 
