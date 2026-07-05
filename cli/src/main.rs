@@ -488,8 +488,7 @@ fn resolve_signer(name: Option<String>) -> anyhow::Result<Option<SignerProfile>>
         .context("failed to load signer profile")
 }
 
-async fn run() -> anyhow::Result<()> {
-    let cli = Cli::parse();
+async fn run_with_cli(cli: Cli) -> anyhow::Result<()> {
     configure_output(cli.no_color);
 
     if let Commands::Completions(command) = cli.command.clone() {
@@ -813,8 +812,11 @@ async fn run() -> anyhow::Result<()> {
 
 #[tokio::main]
 async fn main() {
-    if let Err(e) = run().await {
-        print_human_err(&format!("Error: {:?}", e));
+    let cli = Cli::parse();
+    let context = error_context(&cli.command);
+    let output = cli.output;
+    if let Err(e) = run_with_cli(cli).await {
+        error::handle_error(&e, output, &context, false);
         process::exit(1);
     }
 }

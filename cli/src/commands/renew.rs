@@ -13,6 +13,11 @@ pub async fn run_renew(
     years: u64,
     signer: Option<SignerProfile>,
 ) -> anyhow::Result<()> {
+    let registrar_id = config
+        .registrar_contract_id
+        .clone()
+        .ok_or_else(|| anyhow::anyhow!("Registrar contract ID not configured"))?;
+
     let client = XlmNsClient::new(
         config.rpc_url,
         Some(config.network_passphrase),
@@ -20,7 +25,8 @@ pub async fn run_renew(
         config.subdomain_contract_id.clone(),
         config.bridge_contract_id.clone(),
         config.auction_contract_id.clone(),
-    );
+    )
+    .with_registrar(registrar_id);
 
     let registration = client
         .get_registration(name)

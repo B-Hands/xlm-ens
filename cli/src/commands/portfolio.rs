@@ -45,9 +45,13 @@ async fn build_portfolio_records(
 
     for entry in names {
         let metadata = client.get_registry_metadata(&entry.name).await?;
+        let owner = entry
+            .address
+            .clone()
+            .unwrap_or_else(|| metadata.owner.clone());
         let record = RegistryEntry {
             name: entry.name.clone(),
-            owner: metadata.owner,
+            owner,
             resolver: metadata.resolver.or_else(|| entry.resolver.clone()),
             target_address: entry.address.clone(),
             metadata_uri: None,
