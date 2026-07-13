@@ -23,7 +23,7 @@ integration flows.  Read this before opening a PR that touches any file under
 
 Each Soroban contract exposes a machine-readable ABI called a *contract spec*.
 The CI `artifacts` job (`.github/workflows/ci.yml`) builds every contract to
-`wasm32-unknown-unknown`, extracts the spec with `soroban contract spec`, and
+`wasm32-unknown-unknown`, extracts the spec with `soroban contract inspect`, and
 uploads the JSON files under `artifacts/specs/`.
 
 ### When specs change
@@ -51,7 +51,7 @@ cargo build --release --target wasm32-unknown-unknown \
 mkdir -p artifacts/specs
 for wasm in target/wasm32-unknown-unknown/release/xlm_ns_*.wasm; do
   base="$(basename "${wasm%.wasm}")"
-  soroban contract spec --wasm "$wasm" --output json \
+  soroban contract inspect --wasm "$wasm" --output json \
     > "artifacts/specs/${base}.json"
 done
 ```
@@ -228,7 +228,7 @@ cargo build --release --target wasm32-unknown-unknown \
 mkdir -p artifacts/specs
 for wasm in target/wasm32-unknown-unknown/release/xlm_ns_*.wasm; do
   base="$(basename "${wasm%.wasm}")"
-  soroban contract spec --wasm "$wasm" --output json \
+  soroban contract inspect --wasm "$wasm" --output json \
     > "artifacts/specs/${base}.json"
 done
 

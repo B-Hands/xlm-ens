@@ -66,7 +66,7 @@ for entry in "${CRATES[@]}"; do
     exit 1
   fi
   cp "$src" "$dst"
-  soroban contract spec --wasm "$dst" --output json > "$spec"
+  soroban contract inspect --wasm "$dst" --output json > "$spec"
   printf '  %-22s -> %s (%d bytes wasm)\n' "$wasm_root" "$spec" "$(wc -c <"$dst")"
 done
 

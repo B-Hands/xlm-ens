@@ -196,7 +196,7 @@ jobs:
           cp target/wasm32v1-none/release/xlm_ns_*.wasm release-contracts/wasm/
           for wasm in release-contracts/wasm/*.wasm; do
             base="$(basename "${wasm%.wasm}")"
-            soroban contract spec --wasm "$wasm" --output json > "release-contracts/specs/${base}.json"
+            soroban contract inspect --wasm "$wasm" --output json > "release-contracts/specs/${base}.json"
           done
           tar -czf "xlm-ns-contracts-${VERSION}.tar.gz" release-contracts/
 

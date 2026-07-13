@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Detect drift between deployed Soroban contracts and the xlm-ns-sdk surface.
 #
-# Reads the JSON spec files produced by `soroban contract spec --output json`
+# Reads the JSON spec files produced by `soroban contract inspect --output json`
 # (the CI `artifacts` job emits them under `artifacts/specs/`) and checks that
 # every method the SDK is hardcoded to call still exists on the corresponding
 # contract. Exits non-zero on drift so it can wedge CI before a stale SDK
@@ -26,7 +26,7 @@ if [[ ! -d "$SPECS_DIR" ]]; then
   echo "error: spec directory '$SPECS_DIR' does not exist." >&2
   echo "       Build it with the CI 'artifacts' job, or run:" >&2
   echo "         cargo build --release --target wasm32v1-none -p xlm-ns-registry ..." >&2
-  echo "         soroban contract spec --wasm <file>.wasm --output json > $SPECS_DIR/<file>.json" >&2
+  echo "         soroban contract inspect --wasm <file>.wasm --output json > $SPECS_DIR/<file>.json" >&2
   exit 2
 fi
 

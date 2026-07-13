@@ -134,7 +134,7 @@ jobs:
           # Generate contract specs for each WASM
           for wasm in artifacts/wasm/*.wasm; do
             base="$(basename "${wasm%.wasm}")"
-            soroban contract spec --wasm "$wasm" --output json > "artifacts/specs/${base}.json"
+            soroban contract inspect --wasm "$wasm" --output json > "artifacts/specs/${base}.json"
           done
       - name: Verify SDK bindings against contract specs
         run: scripts/check-sdk-bindings.sh artifacts/specs
