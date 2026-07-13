@@ -134,7 +134,7 @@ jobs:
           # Generate contract specs for each WASM
           for wasm in artifacts/wasm/*.wasm; do
             base="$(basename "${wasm%.wasm}")"
-            soroban contract inspect --wasm "$wasm" --output json > "artifacts/specs/${base}.json"
+            stellar contract info interface --wasm "$wasm" --output json > "artifacts/specs/${base}.json"
           done
       - name: Verify SDK bindings against contract specs
         run: scripts/check-sdk-bindings.sh artifacts/specs

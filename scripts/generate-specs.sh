@@ -26,8 +26,8 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
-if ! command -v soroban >/dev/null 2>&1; then
-  echo "error: soroban CLI is required. Install with: cargo install --locked soroban-cli" >&2
+if ! command -v stellar >/dev/null 2>&1; then
+  echo "error: stellar CLI is required. Install with: cargo install --locked soroban-cli" >&2
   exit 2
 fi
 
@@ -66,7 +66,7 @@ for entry in "${CRATES[@]}"; do
     exit 1
   fi
   cp "$src" "$dst"
-  soroban contract inspect --wasm "$dst" --output json > "$spec"
+  stellar contract info interface --wasm "$dst" --output json > "$spec"
   printf '  %-22s -> %s (%d bytes wasm)\n' "$wasm_root" "$spec" "$(wc -c <"$dst")"
 done
 

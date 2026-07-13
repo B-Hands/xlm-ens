@@ -79,7 +79,7 @@ and add `--test local_soroban` to the test invocation.
 ## Spec drift check
 
 `scripts/check-sdk-bindings.sh` is the partner of these integration tests: it
-parses the JSON specs produced by `soroban contract inspect --output json` and
+parses the JSON specs produced by `stellar contract info interface --output json` and
 fails CI when the SDK references a method the contract no longer exposes. Run
 it locally after rebuilding the WASM artifacts:
 
@@ -92,7 +92,7 @@ mkdir -p artifacts/wasm artifacts/specs
 cp target/wasm32-unknown-unknown/release/xlm_ns_*.wasm artifacts/wasm/
 for wasm in artifacts/wasm/*.wasm; do
   base="$(basename "${wasm%.wasm}")"
-  soroban contract inspect --wasm "$wasm" --output json > "artifacts/specs/${base}.json"
+  stellar contract info interface --wasm "$wasm" --output json > "artifacts/specs/${base}.json"
 done
 
 scripts/check-sdk-bindings.sh
