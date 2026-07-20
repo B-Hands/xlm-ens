@@ -328,11 +328,11 @@ mod tests {
 
     #[test]
     fn error_decoding_works() {
-        use crate::errors::decode_error;
+        use crate::errors::decode_error_generic;
         use crate::errors::ContractErrorCode;
-        assert_eq!(decode_error(1), ContractErrorCode::NameNotFound);
-        assert_eq!(decode_error(2), ContractErrorCode::NotOwner);
-        assert_eq!(decode_error(99), ContractErrorCode::Other);
+        assert_eq!(decode_error_generic(1), ContractErrorCode::NameNotFound);
+        assert_eq!(decode_error_generic(2), ContractErrorCode::NotOwner);
+        assert_eq!(decode_error_generic(99), ContractErrorCode::Other(99));
     }
 
     #[tokio::test]

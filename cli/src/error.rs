@@ -369,35 +369,439 @@ fn contract_error(
             suggestion:
                 "Use `xlm-ns whois <name>` or `xlm-ns resolve <name>` to confirm the current record"
                     .to_string(),
-            docs: vec!["docs/contract-specs.md"],
+            docs: vec!["docs/error-reference.md"],
             technical: technical_chain_or(err, "contract error: NameNotFound"),
         },
         ContractErrorCode::NotOwner => FriendlyError {
             summary: format!("{} is owned by a different account", subject_name(context)),
             suggestion: "Use the current owner or the admin signer, then retry".to_string(),
-            docs: vec!["docs/contract-specs.md"],
+            docs: vec!["docs/error-reference.md"],
             technical: technical_chain_or(err, "contract error: NotOwner"),
         },
         ContractErrorCode::Expired => FriendlyError {
             summary: format!("{} has expired", subject_name(context)),
             suggestion: "Renew it during the grace period, or register it again if it is claimable"
                 .to_string(),
-            docs: vec!["docs/contract-specs.md"],
+            docs: vec!["docs/error-reference.md"],
             technical: technical_chain_or(err, "contract error: Expired"),
         },
         ContractErrorCode::InvalidLabel => FriendlyError {
             summary: format!("{} is not a valid XLM name label", subject_name(context)),
             suggestion: "Use a lowercase label with only supported characters".to_string(),
-            docs: vec!["docs/contract-specs.md"],
+            docs: vec!["docs/error-reference.md"],
             technical: technical_chain_or(err, "contract error: InvalidLabel"),
         },
-        ContractErrorCode::Other => FriendlyError {
+        // ── Registry ────────────────────────────────────────────────────────
+        ContractErrorCode::RegistryAlreadyRegistered => FriendlyError {
+            summary: format!("{} is already registered", subject_name(context)),
+            suggestion: "Use `xlm-ns whois <name>` to inspect the current owner and expiry"
+                .to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistryAlreadyRegistered"),
+        },
+        ContractErrorCode::RegistryNotFound => FriendlyError {
+            summary: format!("{} was not found in the registry", subject_name(context)),
+            suggestion: "Check the name spelling or use `xlm-ns resolve <name>`".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistryNotFound"),
+        },
+        ContractErrorCode::RegistryNotYetClaimable => FriendlyError {
+            summary: format!(
+                "{} is not yet claimable (grace period active)",
+                subject_name(context)
+            ),
+            suggestion: "Wait until the grace period ends, then register it".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistryNotYetClaimable"),
+        },
+        ContractErrorCode::RegistryNotActive => FriendlyError {
+            summary: format!("{} is not currently active", subject_name(context)),
+            suggestion: "Renew the name or wait until it becomes active again".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistryNotActive"),
+        },
+        ContractErrorCode::RegistryUnauthorized => FriendlyError {
+            summary: "The registry action is unauthorized".to_string(),
+            suggestion: "Use the current owner or admin signer profile".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistryUnauthorized"),
+        },
+        ContractErrorCode::RegistryMetadataTooLong => FriendlyError {
+            summary: "The metadata URI is too long".to_string(),
+            suggestion: "Shorten the metadata URI and retry".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistryMetadataTooLong"),
+        },
+        ContractErrorCode::RegistryValidation => FriendlyError {
+            summary: format!("{} failed registry validation", subject_name(context)),
+            suggestion: "Check the name format and registry inputs".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistryValidation"),
+        },
+        ContractErrorCode::RegistryInvalidExpiry => FriendlyError {
+            summary: "The expiry timestamp is invalid".to_string(),
+            suggestion: "Use a future expiry time and retry".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistryInvalidExpiry"),
+        },
+        ContractErrorCode::RegistryInvalidGracePeriod => FriendlyError {
+            summary: "The grace period value is invalid".to_string(),
+            suggestion: "Choose a grace period that is >= the expiry timestamp".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistryInvalidGracePeriod"),
+        },
+        ContractErrorCode::RegistryUpgradeFailed => FriendlyError {
+            summary: "The registry upgrade failed".to_string(),
+            suggestion: "Verify the admin signer and try the upgrade again".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistryUpgradeFailed"),
+        },
+        ContractErrorCode::RegistryLocked => FriendlyError {
+            summary: format!("{} is locked for dispute resolution", subject_name(context)),
+            suggestion: "Wait for the lock to expire or ask the admin to remove it".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistryLocked"),
+        },
+        // ── Registrar ────────────────────────────────────────────────────────
+        ContractErrorCode::RegistrarInsufficientFee => FriendlyError {
+            summary: format!(
+                "{} requires a higher registration fee",
+                subject_name(context)
+            ),
+            suggestion: "Fund the account, then rerun `xlm-ns quote <name> 1` to verify the cost"
+                .to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistrarInsufficientFee"),
+        },
+        ContractErrorCode::RegistrarNotFound => FriendlyError {
+            summary: format!("{} is not registered", subject_name(context)),
+            suggestion: "Use `xlm-ns whois <name>` to inspect the current record".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistrarNotFound"),
+        },
+        ContractErrorCode::RegistrarNotRenewable => FriendlyError {
+            summary: format!(
+                "{} is not renewable in its current state",
+                subject_name(context)
+            ),
+            suggestion: "Renew it during the grace period, or wait until it becomes claimable"
+                .to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistrarNotRenewable"),
+        },
+        ContractErrorCode::RegistrarAlreadyRegistered => FriendlyError {
+            summary: format!("{} is already registered", subject_name(context)),
+            suggestion: "Use `xlm-ns whois <name>` to inspect the current owner and expiry"
+                .to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistrarAlreadyRegistered"),
+        },
+        ContractErrorCode::RegistrarReserved => FriendlyError {
+            summary: format!("{} is reserved", subject_name(context)),
+            suggestion: "Choose another label or remove the reservation if you control the admin"
+                .to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistrarReserved"),
+        },
+        ContractErrorCode::RegistrarUnauthorized => FriendlyError {
+            summary: "The signer is not authorized for this registrar action".to_string(),
+            suggestion: "Switch to the owner or admin signer profile and retry".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistrarUnauthorized"),
+        },
+        ContractErrorCode::RegistrarValidation => FriendlyError {
+            summary: format!("{} failed registrar validation", subject_name(context)),
+            suggestion: "Check the label format and try again".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistrarValidation"),
+        },
+        ContractErrorCode::RegistrarRegistrationClaimable => FriendlyError {
+            summary: format!(
+                "{} is claimable rather than renewable",
+                subject_name(context)
+            ),
+            suggestion: "Register it as a new name instead of renewing it".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistrarRegistrationClaimable"),
+        },
+        ContractErrorCode::RegistrarNotInitialized => FriendlyError {
+            summary: "The registrar is not initialized".to_string(),
+            suggestion: "Deploy or initialize the registrar contract, then retry".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistrarNotInitialized"),
+        },
+        ContractErrorCode::RegistrarAlreadyInitialized => FriendlyError {
+            summary: "The registrar was already initialized".to_string(),
+            suggestion: "Skip initialization and use the existing contract state".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistrarAlreadyInitialized"),
+        },
+        ContractErrorCode::RegistrarRateLimitExceeded => FriendlyError {
+            summary: "You hit the registrar rate limit".to_string(),
+            suggestion: "Wait for the window to reset, or spread registrations out more evenly"
+                .to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistrarRateLimitExceeded"),
+        },
+        ContractErrorCode::RegistrarUpgradeFailed => FriendlyError {
+            summary: "The registrar upgrade failed".to_string(),
+            suggestion: "Verify the admin signer and wasm hash, then retry".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistrarUpgradeFailed"),
+        },
+        ContractErrorCode::RegistrarQuoteExpired => FriendlyError {
+            summary: format!(
+                "The registration quote for {} has expired",
+                subject_name(context)
+            ),
+            suggestion: "Run `xlm-ns quote <name> <years>` to get a fresh quote, then retry"
+                .to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: RegistrarQuoteExpired"),
+        },
+        // ── Resolver ─────────────────────────────────────────────────────────
+        ContractErrorCode::ResolverValidation => FriendlyError {
+            summary: format!("{} failed resolver validation", subject_name(context)),
+            suggestion: "Check the name, text key, and resolver inputs".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: ResolverValidation"),
+        },
+        ContractErrorCode::ResolverRecordNotFound => FriendlyError {
+            summary: format!("{} has no resolver record", subject_name(context)),
+            suggestion: "Use `xlm-ns whois <name>` or register a resolver record first".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: ResolverRecordNotFound"),
+        },
+        ContractErrorCode::ResolverUnauthorized => FriendlyError {
+            summary: "The resolver action is unauthorized".to_string(),
+            suggestion: "Use the owner signer profile and retry".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: ResolverUnauthorized"),
+        },
+        ContractErrorCode::ResolverTooManyTextRecords => FriendlyError {
+            summary: "Too many text records are attached to this name".to_string(),
+            suggestion: "Remove some records or split them across fewer updates".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: ResolverTooManyTextRecords"),
+        },
+        ContractErrorCode::ResolverNotInitialized => FriendlyError {
+            summary: "The resolver is not initialized".to_string(),
+            suggestion: "Deploy or initialize the resolver contract, then retry".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: ResolverNotInitialized"),
+        },
+        ContractErrorCode::ResolverTextRecordValueTooLong => FriendlyError {
+            summary: "The text record value is too long".to_string(),
+            suggestion: "Shorten the text record value and try again".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: ResolverTextRecordValueTooLong"),
+        },
+        ContractErrorCode::ResolverInvalidChain => FriendlyError {
+            summary: "The requested chain is not supported".to_string(),
+            suggestion: "Pick one of the supported chains and retry".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: ResolverInvalidChain"),
+        },
+        ContractErrorCode::ResolverInvalidKey => FriendlyError {
+            summary: "The text record key is invalid".to_string(),
+            suggestion: "Use a normalized, lowercase key".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: ResolverInvalidKey"),
+        },
+        ContractErrorCode::ResolverBatchTooLarge => FriendlyError {
+            summary: "The batch payload is too large".to_string(),
+            suggestion: "Split the request into smaller batches".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: ResolverBatchTooLarge"),
+        },
+        ContractErrorCode::ResolverUpgradeFailed => FriendlyError {
+            summary: "The resolver upgrade failed".to_string(),
+            suggestion: "Verify the admin signer and wasm hash, then retry".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: ResolverUpgradeFailed"),
+        },
+        // ── Subdomain ────────────────────────────────────────────────────────
+        ContractErrorCode::SubdomainValidation => FriendlyError {
+            summary: format!("{} failed subdomain validation", subject_name(context)),
+            suggestion: "Check the parent domain and label format".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: SubdomainValidation"),
+        },
+        ContractErrorCode::SubdomainParentNotFound => FriendlyError {
+            summary: format!("{} has no registered parent domain", subject_name(context)),
+            suggestion: "Register the parent domain first, then retry".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: SubdomainParentNotFound"),
+        },
+        ContractErrorCode::SubdomainAlreadyExists => FriendlyError {
+            summary: format!("{} already exists", subject_name(context)),
+            suggestion: "Choose another subdomain label".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: SubdomainAlreadyExists"),
+        },
+        ContractErrorCode::SubdomainNotFound => FriendlyError {
+            summary: format!("{} was not found", subject_name(context)),
+            suggestion: "Double-check the subdomain name and parent domain".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: SubdomainNotFound"),
+        },
+        ContractErrorCode::SubdomainUnauthorized => FriendlyError {
+            summary: "The subdomain action is unauthorized".to_string(),
+            suggestion: "Use the parent owner or authorized controller signer".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: SubdomainUnauthorized"),
+        },
+        ContractErrorCode::SubdomainUpgradeFailed => FriendlyError {
+            summary: "The subdomain upgrade failed".to_string(),
+            suggestion: "Verify the admin signer and try again".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: SubdomainUpgradeFailed"),
+        },
+        ContractErrorCode::SubdomainDepthLimitExceeded => FriendlyError {
+            summary: "The requested subdomain exceeds the allowed depth".to_string(),
+            suggestion: "Use a shorter subdomain path".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: SubdomainDepthLimitExceeded"),
+        },
+        // ── Auction ──────────────────────────────────────────────────────────
+        ContractErrorCode::AuctionValidation => FriendlyError {
+            summary: format!("{} failed auction validation", subject_name(context)),
+            suggestion: "Check the auction name, timestamps, and reserve price".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: AuctionValidation"),
+        },
+        ContractErrorCode::AuctionAlreadyExists => FriendlyError {
+            summary: format!("{} already has an auction", subject_name(context)),
+            suggestion: "Inspect the current auction or choose a different name".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: AuctionAlreadyExists"),
+        },
+        ContractErrorCode::AuctionNotFound => FriendlyError {
+            summary: format!("{} has no auction", subject_name(context)),
+            suggestion: "Create an auction first, then retry".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: AuctionNotFound"),
+        },
+        ContractErrorCode::AuctionClosed => FriendlyError {
+            summary: format!("{} is already closed", subject_name(context)),
+            suggestion: "Settle the auction or choose another name".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: AuctionClosed"),
+        },
+        ContractErrorCode::AuctionNotStarted => FriendlyError {
+            summary: format!("{} has not started yet", subject_name(context)),
+            suggestion: "Wait for the auction start time and retry".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: AuctionNotStarted"),
+        },
+        ContractErrorCode::AuctionNotEnded => FriendlyError {
+            summary: format!("{} has not ended yet", subject_name(context)),
+            suggestion: "Wait for the end time before settling or inspecting settlement results"
+                .to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: AuctionNotEnded"),
+        },
+        ContractErrorCode::AuctionAlreadySettled => FriendlyError {
+            summary: "The auction was already settled".to_string(),
+            suggestion: "Inspect the final result or choose another auction".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: AuctionAlreadySettled"),
+        },
+        ContractErrorCode::AuctionInvalidBid => FriendlyError {
+            summary: "The bid is below the reserve price or minimum increment".to_string(),
+            suggestion: "Increase the bid amount and make sure it clears the reserve price"
+                .to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: AuctionInvalidBid"),
+        },
+        ContractErrorCode::AuctionUpgradeFailed => FriendlyError {
+            summary: "The auction upgrade failed".to_string(),
+            suggestion: "Verify the admin signer and wasm hash, then retry".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: AuctionUpgradeFailed"),
+        },
+        ContractErrorCode::AuctionReentrancyDetected => FriendlyError {
+            summary: "A reentrancy guard blocked this auction operation".to_string(),
+            suggestion: "Retry the operation after the in-flight transaction completes".to_string(),
+            docs: vec!["docs/security/reentrancy-audit.md"],
+            technical: technical_chain_or(err, "contract error: AuctionReentrancyDetected"),
+        },
+        // ── Bridge ───────────────────────────────────────────────────────────
+        ContractErrorCode::BridgeValidation => FriendlyError {
+            summary: format!("{} failed bridge validation", subject_name(context)),
+            suggestion: "Check the chain name and resolver address format".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: BridgeValidation"),
+        },
+        ContractErrorCode::BridgeUnsupportedChain => FriendlyError {
+            summary: format!("{} is not a supported chain", subject_name(context)),
+            suggestion: "Use one of the registered chains or add a new supported-chain entry"
+                .to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: BridgeUnsupportedChain"),
+        },
+        ContractErrorCode::BridgeUpgradeFailed => FriendlyError {
+            summary: "The bridge upgrade failed".to_string(),
+            suggestion: "Verify the admin signer and wasm hash, then retry".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: BridgeUpgradeFailed"),
+        },
+        ContractErrorCode::BridgeUnauthorized => FriendlyError {
+            summary: "The bridge action is unauthorized".to_string(),
+            suggestion: "Use the admin signer profile and retry".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: BridgeUnauthorized"),
+        },
+        ContractErrorCode::BridgeNotFound => FriendlyError {
+            summary: format!("{} was not found", subject_name(context)),
+            suggestion: "Check the chain or route name and try again".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: BridgeNotFound"),
+        },
+        ContractErrorCode::BridgeAlreadyExists => FriendlyError {
+            summary: format!("{} already exists", subject_name(context)),
+            suggestion: "Choose a different chain name or update the existing route".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: BridgeAlreadyExists"),
+        },
+        // ── NFT ──────────────────────────────────────────────────────────────
+        ContractErrorCode::NftAlreadyMinted => FriendlyError {
+            summary: format!("{} is already minted", subject_name(context)),
+            suggestion: "Use the existing token or choose a different token id".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: NftAlreadyMinted"),
+        },
+        ContractErrorCode::NftNotFound => FriendlyError {
+            summary: format!("{} was not found", subject_name(context)),
+            suggestion: "Check the token id and try again".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: NftNotFound"),
+        },
+        ContractErrorCode::NftUnauthorized => FriendlyError {
+            summary: "You are not authorized to inspect or modify this NFT".to_string(),
+            suggestion: "Use the token owner or admin signer profile and retry".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: NftUnauthorized"),
+        },
+        ContractErrorCode::NftUpgradeFailed => FriendlyError {
+            summary: "The NFT upgrade failed".to_string(),
+            suggestion: "Verify the admin signer and wasm hash, then retry".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: NftUpgradeFailed"),
+        },
+        ContractErrorCode::NftNotInitialized => FriendlyError {
+            summary: "The NFT contract is not initialized".to_string(),
+            suggestion: "Deploy or initialize the NFT contract, then retry".to_string(),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, "contract error: NftNotInitialized"),
+        },
+        ContractErrorCode::Other(_) => FriendlyError {
             summary: "The contract returned an unknown error".to_string(),
             suggestion:
                 "Run again with `--verbose` and inspect the log file for the contract reason"
                     .to_string(),
-            docs: vec!["docs/contract-specs.md"],
-            technical: technical_chain_or(err, "contract error: Other"),
+            docs: vec!["docs/error-reference.md"],
+            technical: technical_chain_or(err, &format!("contract error: {code:?}")),
         },
     }
 }
@@ -495,6 +899,16 @@ fn contract_error_for_domain(
                 suggestion: "Verify the admin signer and wasm hash, then retry".to_string(),
                 docs: vec!["docs/contract-specs.md"],
                 technical: technical_chain_or(err, "contract error 12"),
+            },
+            13 => FriendlyError {
+                summary: format!(
+                    "The registration quote for {} has expired",
+                    subject_name(context)
+                ),
+                suggestion: "Run `xlm-ns quote <name> <years>` to get a fresh quote, then retry"
+                    .to_string(),
+                docs: vec!["docs/error-reference.md"],
+                technical: technical_chain_or(err, "contract error 13"),
             },
             _ => unknown_contract_error(context, err, default_summary),
         },
