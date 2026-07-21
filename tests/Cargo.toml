@@ -6,11 +6,6 @@ version.workspace = true
 
 [dev-dependencies]
 soroban-sdk = { version = "=26.0.0-rc.1", features = ["testutils"] }
-tempfile = "3.8"
-anyhow = "1"
-assert_cmd = "2"
-dirs = "5"
-predicates = "3"
 xlm-ns-registrar = { path = "../contracts/registrar" }
 xlm-ns-registry  = { path = "../contracts/registry" }
 xlm-ns-resolver  = { path = "../contracts/resolver" }
@@ -44,10 +39,6 @@ name = "bridge_test"
 path = "integration/bridge_test.rs"
 
 [[test]]
-name = "bulk_test"
-path = "integration/bulk_test.rs"
-
-[[test]]
 name = "registry_errors_test"
 path = "integration/registry_errors_test.rs"
 
@@ -60,8 +51,8 @@ name = "registry_nft_test"
 path = "integration/registry_nft_test.rs"
 
 [[test]]
-name = "watch_test"
-path = "integration/watch_test.rs"
+name = "full_lifecycle_test"
+path = "integration/full_lifecycle_test.rs"
 
 # Storage / hot-path benchmarks. Marked `#[ignore]` in source so they do not
 # run in default `cargo test`; invoke with:

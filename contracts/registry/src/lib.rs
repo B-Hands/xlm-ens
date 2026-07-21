@@ -248,6 +248,12 @@ impl RegistryContract {
             remove_owner_name(&env, &existing.owner, &name);
             env.storage().persistent().remove(&key);
 
+            // The previous owner's NFT must be burned before minting a new one for
+            // the same name, otherwise the mint below traps on `AlreadyMinted`.
+            if let Some(nft_client) = get_nft_client(&env) {
+                nft_client.burn(&name);
+            }
+
             env.events().publish(
                 (symbol_short!("name"), symbol_short!("burn")),
                 (name.clone(), existing.owner),

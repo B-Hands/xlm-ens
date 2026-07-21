@@ -5193,6 +5193,7 @@ dependencies = [
  "serde",
  "serde_json",
  "stellar_sdk",
+ "tempfile",
  "tokio",
  "toml 0.8.23",
  "xlm-ns-auction",
@@ -5212,12 +5213,7 @@ dependencies = [
 name = "xlm-ns-integration-tests"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "assert_cmd",
- "dirs",
- "predicates",
  "soroban-sdk 26.0.0-rc.1",
- "tempfile",
  "xlm-ns-auction",
  "xlm-ns-bridge",
  "xlm-ns-nft",
