@@ -24,7 +24,11 @@ _Changes on `main` that have not been cut into a versioned release._
 
 ### Registry
 
-_(no unreleased changes)_
+#### Fixed
+
+- `register` no longer panics when reclaiming a previously-registered name whose
+  NFT has already been minted. The stale NFT is now burned before the new one
+  is minted, mirroring the cleanup already performed by `burn`.
 
 ### Registrar
 
