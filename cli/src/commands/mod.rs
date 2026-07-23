@@ -10,6 +10,7 @@ pub mod portfolio;
 pub mod quote;
 pub mod register;
 pub mod renew;
+pub mod renewal_check;
 pub mod resolve;
 pub mod reverse;
 pub mod subdomain;

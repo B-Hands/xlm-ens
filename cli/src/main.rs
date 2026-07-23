@@ -244,6 +244,31 @@ enum Commands {
         #[arg(long)]
         page: Option<usize>,
     },
+    /// Scan a portfolio for names approaching expiry, in grace period, or claimable.
+    ///
+    /// Categorizes owned names by urgency (Claimable, Grace Period, Warning, OK) and
+    /// reports renewal cost estimates. Use `--auto-renew` to submit renewal
+    /// transactions for Warning/Grace Period names (combine with the global
+    /// `--dry-run` flag to simulate without submitting).
+    RenewalCheck {
+        /// Owner address to inspect
+        owner: String,
+        /// Warn when a name has fewer than this many days remaining before expiry.
+        #[arg(long = "warn-days", default_value_t = 30)]
+        warn_days: u32,
+        /// Submit renewal transactions for Warning/Grace Period names.
+        #[arg(long)]
+        auto_renew: bool,
+        /// Number of names to fetch per RPC request.
+        #[arg(long = "batch-size", default_value_t = 50)]
+        batch_size: usize,
+        /// Maximum number of names to return.
+        #[arg(long)]
+        limit: Option<usize>,
+        /// Fetch a single 1-based page instead of the whole portfolio.
+        #[arg(long)]
+        page: Option<usize>,
+    },
     /// Fetch a registration price quote without submitting a transaction (read-only).
     ///
     /// Use this to inspect the full fee breakdown and lifecycle timestamps before
@@ -809,6 +834,30 @@ async fn run_with_cli(cli: Cli) -> anyhow::Result<()> {
             };
             commands::portfolio::run_portfolio(config, cli.output, &owner, options).await
         }
+        Commands::RenewalCheck {
+            owner,
+            warn_days,
+            auto_renew,
+            batch_size,
+            limit,
+            page,
+        } => {
+            let options = commands::portfolio::PortfolioOptions {
+                batch_size,
+                limit,
+                page,
+            };
+            commands::renewal_check::run_renewal_check(
+                config,
+                cli.output,
+                cli.dry_run,
+                &owner,
+                warn_days,
+                auto_renew,
+                options,
+            )
+            .await
+        }
         Commands::Quote { name, years } => {
             commands::quote::run_quote(config, cli.output, &name, years).await
         }
@@ -971,6 +1020,12 @@ fn error_context(command: &Commands) -> error::ErrorContext {
             subject: Some(name.clone()),
             subject_kind: error::SubjectKind::Name,
             command: "quote",
+        },
+        Commands::RenewalCheck { owner, .. } => error::ErrorContext {
+            domain: error::ErrorDomain::Registry,
+            subject: Some(owner.clone()),
+            subject_kind: error::SubjectKind::Address,
+            command: "renewal-check",
         },
         Commands::Bulk(sub) => match sub {
             BulkCommands::Register { file } => error::ErrorContext {
@@ -1368,6 +1423,17 @@ fn validate_contract_policy(
         Commands::Portfolio { .. } => (
             "portfolio",
             &[ContractKind::Registry, ContractKind::Resolver],
+            &[ContractKind::Registry],
+        ),
+        // Registrar is only required at runtime when `--auto-renew` is set
+        // (checked in `run_renewal_check`), so it's allowed but not required here.
+        Commands::RenewalCheck { .. } => (
+            "renewal-check",
+            &[
+                ContractKind::Registry,
+                ContractKind::Resolver,
+                ContractKind::Registrar,
+            ],
             &[ContractKind::Registry],
         ),
         // Quote and Availability are read-only; registrar is needed for pricing.

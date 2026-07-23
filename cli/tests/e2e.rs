@@ -108,6 +108,7 @@ fn root_and_subcommand_help_are_available() {
         vec!["renew", "--help"],
         vec!["whois", "--help"],
         vec!["portfolio", "--help"],
+        vec!["renewal-check", "--help"],
         vec!["text", "--help"],
         vec!["auction", "--help"],
         vec!["bridge", "--help"],
@@ -372,6 +373,97 @@ fn whois_and_portfolio_support_machine_readable_formats() {
         .clone();
     let rows = csv_rows(&portfolio_csv);
     assert_eq!(rows.len(), 2);
+}
+
+#[test]
+fn renewal_check_emits_human_json_and_csv() {
+    let owner = account_address('M');
+
+    let mut json_args = registry_resolver_args();
+    json_args.extend([
+        "--output".into(),
+        "json".into(),
+        "renewal-check".into(),
+        owner.clone(),
+    ]);
+    let json = bin()
+        .args(&json_args)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let json = json_output(&json);
+    let items = json
+        .as_array()
+        .expect("renewal-check json should be an array");
+    assert_eq!(items.len(), 2);
+
+    // The SDK's mock portfolio/registry data uses a fixed reference timestamp
+    // that is permanently in the past, so both names are always past their
+    // grace period (claimable) and therefore have no renewal cost.
+    for item in items {
+        assert_eq!(item["status"], "claimable");
+        assert!(item["renewal_cost"].is_null());
+        assert!(item["auto_renew_status"].is_null());
+        assert!(item["days_remaining"].as_i64().unwrap() < 0);
+    }
+    let names: Vec<&str> = items
+        .iter()
+        .map(|item| item["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, vec!["alice.xlm", "bob.xlm"]);
+
+    let mut human_args = registry_resolver_args();
+    human_args.extend(["renewal-check".into(), owner.clone()]);
+    let human = bin()
+        .args(&human_args)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let human_text = String::from_utf8(human).expect("utf8");
+    assert!(human_text.contains(&format!("Renewal check for {owner}")));
+    assert!(human_text.contains("[CLAIMABLE]"));
+    assert!(human_text.contains("Summary: 2 claimable, 0 grace period, 0 warning, 0 ok"));
+
+    let mut csv_args = registry_resolver_args();
+    csv_args.extend([
+        "--output".into(),
+        "csv".into(),
+        "renewal-check".into(),
+        owner,
+    ]);
+    let csv = bin()
+        .args(&csv_args)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let rows = csv_rows(&csv);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].len(), 10);
+}
+
+#[test]
+fn renewal_check_auto_renew_requires_registrar_contract() {
+    let mut args = registry_resolver_args();
+    args.extend([
+        "renewal-check".into(),
+        account_address('N'),
+        "--auto-renew".into(),
+    ]);
+
+    bin()
+        .args(&args)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Error:"))
+        .stderr(predicate::str::contains("Suggestion:"))
+        .stderr(predicate::str::contains("--auto-renew"))
+        .stderr(predicate::str::contains("registrar contract ID"));
 }
 
 #[test]
