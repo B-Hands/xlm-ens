@@ -156,3 +156,65 @@ fn blocking_client_resolves_against_local_node() {
         .expect("blocking resolve should succeed against the local registry");
     assert_eq!(resolution.name, env.test_name);
 }
+
+#[tokio::test]
+async fn batch_resolve_against_local_node() {
+    let Some(env) = live_env() else { return };
+    if env.resolver.is_none() {
+        eprintln!("skip: XLM_NS_RESOLVER_ID unset — batch_resolve needs the resolver contract");
+        return;
+    }
+    let client = build_client(&env);
+
+    // A known name alongside one that cannot exist: the batch must come back
+    // whole, with the failure isolated to its own entry.
+    let missing = "this-name-definitely-does-not-exist.xlm".to_string();
+    let results = client
+        .batch_resolve(vec![env.test_name.clone(), missing.clone()])
+        .await
+        .expect("batch_resolve should complete against the local resolver");
+
+    assert_eq!(results.len(), 2, "one result per requested name");
+    assert_eq!(results[0].name, env.test_name);
+    assert_eq!(results[1].name, missing);
+    assert!(
+        results[1].is_err(),
+        "a name that was never registered should carry a per-name error",
+    );
+}
+
+#[tokio::test]
+async fn batch_resolve_chunks_against_local_node() {
+    let Some(env) = live_env() else { return };
+    if env.resolver.is_none() {
+        eprintln!("skip: XLM_NS_RESOLVER_ID unset — batch_resolve needs the resolver contract");
+        return;
+    }
+
+    // Force several invocations for a handful of names so the chunking path
+    // runs against a real node's resource limits.
+    let mut builder = XlmNsClient::builder(&env.rpc_url)
+        .registry(&env.registry)
+        .config(
+            ClientConfig::default()
+                .with_timeout(Duration::from_secs(15))
+                .with_max_retries(2)
+                .with_batch_chunk_size(2),
+        );
+    if let Some(p) = &env.passphrase {
+        builder = builder.network_passphrase(p);
+    }
+    if let Some(r) = &env.resolver {
+        builder = builder.resolver(r);
+    }
+    let client = builder.build();
+
+    let requested: Vec<String> = (0..5).map(|_| env.test_name.clone()).collect();
+    let results = client
+        .batch_resolve(requested.clone())
+        .await
+        .expect("chunked batch_resolve should complete against the local resolver");
+
+    assert_eq!(results.len(), requested.len());
+    assert!(results.iter().all(|r| r.name == env.test_name));
+}

@@ -35,6 +35,15 @@ pub const DEFAULT_MAX_BACKOFF: Duration = Duration::from_secs(30);
 /// reach a terminal state when final-status hydration is enabled.
 pub const DEFAULT_TRANSACTION_POLL_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// Default number of names sent per `batch_resolve` contract invocation.
+///
+/// Soroban caps the resources a single invocation may consume, so a batch
+/// larger than this is split across several invocations. The default is
+/// deliberately conservative: it stays well inside the limit for names of
+/// typical length, and callers who have measured their own workload can raise
+/// it with [`ClientConfig::with_batch_chunk_size`].
+pub const DEFAULT_BATCH_CHUNK_SIZE: usize = 50;
+
 /// Returns the default `User-Agent` string identifying this SDK build.
 pub fn default_user_agent() -> String {
     format!("xlm-ns-sdk/{}", env!("CARGO_PKG_VERSION"))
@@ -141,6 +150,9 @@ pub struct ClientConfig {
     pub poll_final_status: bool,
     /// Maximum time spent waiting for the transaction to settle.
     pub transaction_poll_timeout: Duration,
+    /// Maximum number of names sent per batch contract invocation. Batches
+    /// larger than this are split into several invocations transparently.
+    pub batch_chunk_size: usize,
 }
 
 impl ClientConfig {
@@ -194,6 +206,15 @@ impl ClientConfig {
         self.transaction_poll_timeout = timeout;
         self
     }
+
+    /// Override [`batch_chunk_size`](Self::batch_chunk_size).
+    ///
+    /// A `chunk_size` of zero is meaningless (it would never make progress),
+    /// so it is clamped up to 1.
+    pub fn with_batch_chunk_size(mut self, chunk_size: usize) -> Self {
+        self.batch_chunk_size = chunk_size.max(1);
+        self
+    }
 }
 
 impl Default for ClientConfig {
@@ -204,6 +225,7 @@ impl Default for ClientConfig {
             user_agent: default_user_agent(),
             poll_final_status: true,
             transaction_poll_timeout: DEFAULT_TRANSACTION_POLL_TIMEOUT,
+            batch_chunk_size: DEFAULT_BATCH_CHUNK_SIZE,
         }
     }
 }
@@ -253,6 +275,23 @@ mod tests {
             config.transaction_poll_timeout,
             DEFAULT_TRANSACTION_POLL_TIMEOUT
         );
+        assert_eq!(config.batch_chunk_size, DEFAULT_BATCH_CHUNK_SIZE);
+    }
+
+    #[test]
+    fn batch_chunk_size_is_clamped_to_at_least_one() {
+        assert_eq!(
+            ClientConfig::default()
+                .with_batch_chunk_size(0)
+                .batch_chunk_size,
+            1
+        );
+        assert_eq!(
+            ClientConfig::default()
+                .with_batch_chunk_size(7)
+                .batch_chunk_size,
+            7
+        );
     }
 
     #[test]
@@ -262,13 +301,15 @@ mod tests {
             .with_max_retries(7)
             .with_user_agent("svc/0.1")
             .with_poll_final_status(false)
-            .with_transaction_poll_timeout(Duration::from_secs(3));
+            .with_transaction_poll_timeout(Duration::from_secs(3))
+            .with_batch_chunk_size(25);
 
         assert_eq!(config.timeout, Duration::from_secs(30));
         assert_eq!(config.retry.max_retries, 7);
         assert_eq!(config.user_agent, "svc/0.1");
         assert!(!config.poll_final_status);
         assert_eq!(config.transaction_poll_timeout, Duration::from_secs(3));
+        assert_eq!(config.batch_chunk_size, 25);
     }
 
     #[test]

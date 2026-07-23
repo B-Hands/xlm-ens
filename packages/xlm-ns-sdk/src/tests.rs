@@ -1006,4 +1006,299 @@ mod tests {
             other => panic!("expected rate limit error, got {other:?}"),
         }
     }
+
+    // ── batch_resolve ─────────────────────────────────────────────────────
+    //
+    // Mock-backed name conventions used below (see `mock_batch_resolve`):
+    //   `notfound*`  — resolver holds no record
+    //   `expired*`   — record exists but is past its grace period
+    //   `noaddress*` — record exists with no address
+    //   `rpcfail*`   — the chunk's invocation fails with a retryable error
+
+    mod batch_resolve {
+        use super::*;
+        use crate::client::take_chunk_invocations;
+        use crate::config::ClientConfig;
+        use crate::types::BatchResolveError;
+
+        fn batch_client(chunk_size: usize) -> XlmNsClient {
+            XlmNsClient::builder("http://localhost")
+                .registry(REGISTRY_ID)
+                .resolver(RESOLVER_ID)
+                .config(
+                    ClientConfig::default()
+                        .with_batch_chunk_size(chunk_size)
+                        .with_max_retries(0),
+                )
+                .build()
+        }
+
+        fn names(prefix: &str, count: usize) -> Vec<String> {
+            (0..count).map(|i| format!("{prefix}{i}.xlm")).collect()
+        }
+
+        #[tokio::test]
+        async fn resolves_every_name_and_preserves_input_order() {
+            let input = vec![
+                "alice.xlm".to_string(),
+                "bob.xlm".to_string(),
+                "carol.xlm".to_string(),
+            ];
+
+            let results = batch_client(50).batch_resolve(input.clone()).await.unwrap();
+
+            assert_eq!(results.len(), input.len());
+            let returned: Vec<&str> = results.iter().map(|r| r.name.as_str()).collect();
+            assert_eq!(returned, ["alice.xlm", "bob.xlm", "carol.xlm"]);
+
+            for result in &results {
+                assert!(result.is_ok(), "{} should resolve: {result:?}", result.name);
+                assert!(result.address.is_some());
+                // TTL and expiry ride along so callers can cache the answer.
+                assert_eq!(result.ttl_seconds, Some(3600));
+                assert!(result.expires_at.is_some());
+                assert!(result.error.is_none());
+            }
+        }
+
+        #[tokio::test]
+        async fn empty_input_returns_empty_without_invoking_the_contract() {
+            take_chunk_invocations();
+
+            let results = batch_client(50).batch_resolve(Vec::new()).await.unwrap();
+
+            assert!(results.is_empty());
+            assert_eq!(take_chunk_invocations(), 0);
+        }
+
+        #[tokio::test]
+        async fn missing_resolver_contract_id_fails_the_whole_call() {
+            let client = XlmNsClient::builder("http://localhost")
+                .registry(REGISTRY_ID)
+                .build();
+
+            let err = client
+                .batch_resolve(vec!["alice.xlm".to_string()])
+                .await
+                .unwrap_err();
+
+            match err {
+                SdkError::InvalidRequest(message) => {
+                    assert!(
+                        message.contains("resolver contract ID"),
+                        "unexpected message: {message}"
+                    );
+                }
+                other => panic!("expected InvalidRequest, got {other:?}"),
+            }
+        }
+
+        #[tokio::test]
+        async fn partial_failures_are_reported_per_name() {
+            let input = vec![
+                "alice.xlm".to_string(),
+                "notfound.xlm".to_string(),
+                "expired.xlm".to_string(),
+                "bob.xlm".to_string(),
+                "noaddress.xlm".to_string(),
+                "not-a-name".to_string(),
+            ];
+
+            let results = batch_client(50).batch_resolve(input).await.unwrap();
+            assert_eq!(results.len(), 6);
+
+            // The healthy names still resolve.
+            assert!(results[0].is_ok());
+            assert!(results[3].is_ok());
+            assert_eq!(results[3].name, "bob.xlm");
+
+            assert_eq!(results[1].error, Some(BatchResolveError::NotFound));
+            assert!(results[1].address.is_none());
+
+            match &results[2].error {
+                Some(BatchResolveError::Expired { expired_at }) => {
+                    assert!(*expired_at > 0, "expiry timestamp should be reported");
+                }
+                other => panic!("expected Expired, got {other:?}"),
+            }
+
+            assert_eq!(results[4].error, Some(BatchResolveError::NoAddress));
+
+            match &results[5].error {
+                Some(BatchResolveError::InvalidName { reason }) => {
+                    assert!(reason.contains("TLD"), "unexpected reason: {reason}");
+                }
+                other => panic!("expected InvalidName, got {other:?}"),
+            }
+        }
+
+        #[tokio::test]
+        async fn invalid_names_are_rejected_locally_without_an_invocation() {
+            take_chunk_invocations();
+
+            let results = batch_client(50)
+                .batch_resolve(vec![
+                    String::new(),
+                    "   ".to_string(),
+                    " alice.xlm".to_string(),
+                    "alice.eth".to_string(),
+                    "-bad-.xlm".to_string(),
+                ])
+                .await
+                .unwrap();
+
+            assert_eq!(results.len(), 5);
+            assert!(results
+                .iter()
+                .all(|r| matches!(r.error, Some(BatchResolveError::InvalidName { .. }))));
+            // Nothing was worth sending, so no chunk was invoked at all.
+            assert_eq!(take_chunk_invocations(), 0);
+        }
+
+        #[tokio::test]
+        async fn subdomains_are_accepted_by_client_side_validation() {
+            let results = batch_client(50)
+                .batch_resolve(vec!["team.alice.xlm".to_string()])
+                .await
+                .unwrap();
+
+            assert!(results[0].is_ok(), "unexpected: {:?}", results[0]);
+        }
+
+        #[tokio::test]
+        async fn batches_larger_than_the_chunk_size_are_split() {
+            take_chunk_invocations();
+
+            // 10 names at a chunk size of 4 → chunks of 4, 4, 2.
+            let results = batch_client(4)
+                .batch_resolve(names("name", 10))
+                .await
+                .unwrap();
+
+            assert_eq!(take_chunk_invocations(), 3);
+            assert_eq!(results.len(), 10);
+            // Order survives reassembly across chunk boundaries.
+            for (index, result) in results.iter().enumerate() {
+                assert_eq!(result.name, format!("name{index}.xlm"));
+                assert!(result.is_ok());
+            }
+        }
+
+        #[tokio::test]
+        async fn a_batch_within_the_chunk_size_is_sent_as_one_invocation() {
+            take_chunk_invocations();
+
+            let results = batch_client(50)
+                .batch_resolve(names("name", 50))
+                .await
+                .unwrap();
+
+            assert_eq!(take_chunk_invocations(), 1);
+            assert_eq!(results.len(), 50);
+        }
+
+        #[tokio::test]
+        async fn locally_rejected_names_do_not_consume_chunk_capacity() {
+            take_chunk_invocations();
+
+            // 4 valid names around 2 invalid ones, chunked by 2: the invalid
+            // names never enter a chunk, so 4 valid names → exactly 2 chunks.
+            let results = batch_client(2)
+                .batch_resolve(vec![
+                    "alice.xlm".to_string(),
+                    "bad".to_string(),
+                    "bob.xlm".to_string(),
+                    "also-bad".to_string(),
+                    "carol.xlm".to_string(),
+                    "dave.xlm".to_string(),
+                ])
+                .await
+                .unwrap();
+
+            assert_eq!(take_chunk_invocations(), 2);
+            assert_eq!(results.len(), 6);
+            assert!(results[0].is_ok());
+            assert!(results[1].is_err());
+            assert!(results[2].is_ok());
+            assert!(results[3].is_err());
+            assert!(results[4].is_ok());
+            assert!(results[5].is_ok());
+        }
+
+        #[tokio::test]
+        async fn a_failed_chunk_only_fails_its_own_names() {
+            // Chunk size 2 puts the failing name with `bob.xlm` in chunk 2,
+            // leaving chunks 1 and 3 to succeed.
+            let results = batch_client(2)
+                .batch_resolve(vec![
+                    "alice.xlm".to_string(),
+                    "carol.xlm".to_string(),
+                    "rpcfail.xlm".to_string(),
+                    "bob.xlm".to_string(),
+                    "dave.xlm".to_string(),
+                    "erin.xlm".to_string(),
+                ])
+                .await
+                .unwrap();
+
+            assert_eq!(results.len(), 6);
+            assert!(results[0].is_ok());
+            assert!(results[1].is_ok());
+            assert!(results[4].is_ok());
+            assert!(results[5].is_ok());
+
+            // Both names sharing the failed chunk report the RPC failure.
+            for index in [2, 3] {
+                match &results[index].error {
+                    Some(BatchResolveError::Rpc { reason }) => {
+                        assert!(!reason.is_empty(), "reason should be populated");
+                    }
+                    other => panic!("expected Rpc error at {index}, got {other:?}"),
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn a_failing_chunk_is_retried_before_being_reported() {
+            take_chunk_invocations();
+
+            let client = XlmNsClient::builder("http://localhost")
+                .registry(REGISTRY_ID)
+                .resolver(RESOLVER_ID)
+                .config(
+                    ClientConfig::default()
+                        .with_batch_chunk_size(10)
+                        .with_max_retries(2)
+                        .with_initial_backoff(Duration::from_millis(1))
+                        .with_jitter(false),
+                )
+                .build();
+
+            let results = client
+                .batch_resolve(vec!["rpcfail.xlm".to_string()])
+                .await
+                .unwrap();
+
+            // One initial attempt plus two retries, all on the same chunk.
+            assert_eq!(take_chunk_invocations(), 3);
+            assert!(matches!(
+                results[0].error,
+                Some(BatchResolveError::Rpc { .. })
+            ));
+        }
+
+        #[test]
+        fn blocking_facade_exposes_batch_resolve() {
+            let client =
+                crate::blocking::XlmNsBlockingClient::from_async(batch_client(50)).unwrap();
+
+            let results = client
+                .batch_resolve(vec!["alice.xlm".to_string(), "notfound.xlm".to_string()])
+                .unwrap();
+
+            assert_eq!(results.len(), 2);
+            assert!(results[0].is_ok());
+            assert_eq!(results[1].error, Some(BatchResolveError::NotFound));
+        }
+    }
 }

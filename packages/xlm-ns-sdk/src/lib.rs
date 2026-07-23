@@ -22,7 +22,10 @@ pub mod types;
 
 pub use blocking::XlmNsBlockingClient;
 pub use client::{XlmNsClient, XlmNsClientBuilder};
-pub use config::{ClientConfig, NetworkPreset, RetryConfig, DEFAULT_TRANSACTION_POLL_TIMEOUT};
+pub use config::{
+    ClientConfig, NetworkPreset, RetryConfig, DEFAULT_BATCH_CHUNK_SIZE,
+    DEFAULT_TRANSACTION_POLL_TIMEOUT,
+};
 pub use errors::SdkError;
 pub use ingestion::{
     decode_ledger_close_meta_xdr, read_length_prefixed_frame, CaptiveCoreBackend,
@@ -31,5 +34,6 @@ pub use ingestion::{
     SupervisorStatus, TokioCaptiveCoreBackend,
 };
 pub use types::{
-    RegisterResult, RegistrationReceipt, RenewResult, RenewalReceipt, SimulationResult,
+    BatchResolveError, BatchResult, RegisterResult, RegistrationReceipt, RenewResult,
+    RenewalReceipt, SimulationResult,
 };
