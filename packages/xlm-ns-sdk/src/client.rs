@@ -4,12 +4,13 @@ use crate::errors::{ContractErrorCode, SdkError};
 use crate::network;
 use crate::types::{
     AddControllerRequest, AuctionCreateRequest, AuctionInfo, AuctionState, AuctionStatus,
-    BidRequest, BridgeRoute, BuildMessageRequest, CreateSubdomainRequest, FeeBreakdown, NameRecord,
-    NftRecord, PortfolioPage, RegisterChainRequest, RegisterParentRequest, RegistrarMetrics,
-    RegistrationQuote, RegistrationReceipt, RegistrationRequest, RegistryEntry, RenewalReceipt,
-    RenewalRequest, ResolutionRecord, ResolutionResult, ReverseResolution, SimulationResult,
-    Subdomain, SubmissionStatus, TextRecord, TextRecordUpdate, TextRecordsUpdate,
-    TransactionSubmission, TransferRequest, TransferSubdomainRequest, DEFAULT_FEE_CURRENCY,
+    BatchResolveError, BatchResult, BidRequest, BridgeRoute, BuildMessageRequest,
+    CreateSubdomainRequest, FeeBreakdown, NameRecord, NftRecord, PortfolioPage,
+    RegisterChainRequest, RegisterParentRequest, RegistrarMetrics, RegistrationQuote,
+    RegistrationReceipt, RegistrationRequest, RegistryEntry, RenewalReceipt, RenewalRequest,
+    ResolutionRecord, ResolutionResult, ReverseResolution, SimulationResult, Subdomain,
+    SubmissionStatus, TextRecord, TextRecordUpdate, TextRecordsUpdate, TransactionSubmission,
+    TransferRequest, TransferSubdomainRequest, DEFAULT_FEE_CURRENCY,
 };
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
@@ -18,7 +19,7 @@ use std::hash::{Hash as StdHash, Hasher};
 use std::time::{SystemTime, UNIX_EPOCH};
 use stellar_rpc_client::Client;
 use stellar_xdr::curr::Hash as XdrHash;
-use xlm_ns_common::validation::{validate_account_address, validate_contract_id};
+use xlm_ns_common::validation::{validate_account_address, validate_contract_id, validate_label};
 use xlm_ns_common::{GRACE_PERIOD_SECONDS, YEAR_SECONDS};
 
 const MOCK_REFERENCE_TIMESTAMP: u64 = 1_682_200_000;
@@ -41,6 +42,61 @@ fn now_unix() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Counts chunk invocations made by `batch_resolve`, so tests can assert
+    /// that a batch was actually split rather than sent whole.
+    ///
+    /// Thread-local rather than a global so tests running in parallel never
+    /// observe each other's counts: `#[tokio::test]` drives the future on the
+    /// test's own thread.
+    static CHUNK_INVOCATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Resets the per-thread chunk-invocation counter and returns the previous
+/// value, so a test can measure a single `batch_resolve` call.
+#[cfg(test)]
+pub(crate) fn take_chunk_invocations() -> usize {
+    CHUNK_INVOCATIONS.with(|count| count.replace(0))
+}
+
+/// The clock the mock backend evaluates lifecycle state against.
+///
+/// The mock fixtures are anchored to [`MOCK_REFERENCE_TIMESTAMP`], so judging
+/// them against the wall clock would report every fixture as long expired.
+fn mock_now() -> u64 {
+    MOCK_REFERENCE_TIMESTAMP
+}
+
+/// Client-side name check applied to each entry of a batch.
+///
+/// Mirrors the resolver's `validate_fqdn_soroban` rules — a `.xlm` TLD and
+/// well-formed labels, subdomains included — so a name the contract would
+/// reject is failed locally instead of consuming a slot in a chunk. Returns
+/// the reason on rejection.
+fn validate_batch_name(name: &str) -> Result<(), String> {
+    if name.trim().is_empty() {
+        return Err("name must not be empty".to_string());
+    }
+    if name != name.trim() {
+        return Err("name must not have leading or trailing whitespace".to_string());
+    }
+
+    let (labels, tld) = name
+        .rsplit_once('.')
+        .ok_or_else(|| "name is missing a TLD".to_string())?;
+
+    if tld != "xlm" {
+        return Err(format!("unsupported TLD '.{tld}'"));
+    }
+
+    for label in labels.split('.') {
+        validate_label(label).map_err(|err| format!("invalid label '{label}': {err:?}"))?;
+    }
+
+    Ok(())
 }
 
 fn submission_hash(
@@ -343,6 +399,221 @@ impl XlmNsClient {
         }
 
         Ok(result)
+    }
+
+    /// Resolve many names in as few contract invocations as possible.
+    ///
+    /// This maps onto the resolver contract's `batch_resolve` entry point, so a
+    /// batch of `n` names costs one invocation per chunk instead of `n`
+    /// individual [`resolve`](Self::resolve) round-trips.
+    ///
+    /// # Partial failures
+    ///
+    /// One bad name never fails the batch. Results are returned in the same
+    /// order as `names`, one [`BatchResult`] per input, and a name that could
+    /// not be resolved carries a [`BatchResolveError`] describing why while
+    /// every other name still returns its address. The returned `Err` is
+    /// reserved for problems with the request itself — an unconfigured or
+    /// malformed resolver contract ID, for instance.
+    ///
+    /// # Chunking
+    ///
+    /// Soroban bounds the resources one invocation may consume, so batches
+    /// larger than [`ClientConfig::batch_chunk_size`] are split transparently
+    /// across several invocations. Each chunk is retried independently under
+    /// the client's [`RetryConfig`]; a chunk that still fails after its retries
+    /// marks only its own names with [`BatchResolveError::Rpc`].
+    ///
+    /// [`ClientConfig::batch_chunk_size`]: crate::config::ClientConfig::batch_chunk_size
+    /// [`RetryConfig`]: crate::config::RetryConfig
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # async fn run() -> Result<(), xlm_ns_sdk::SdkError> {
+    /// use xlm_ns_sdk::XlmNsClient;
+    ///
+    /// let client = XlmNsClient::builder("https://soroban-testnet.stellar.org")
+    ///     .registry("CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+    ///     .resolver("CBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+    ///     .build();
+    ///
+    /// let results = client
+    ///     .batch_resolve(vec!["alice.xlm".into(), "bob.xlm".into()])
+    ///     .await?;
+    ///
+    /// for result in &results {
+    ///     match result.as_result() {
+    ///         Ok(address) => println!("{} -> {address}", result.name),
+    ///         Err(err) => eprintln!("{} failed: {err}", result.name),
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// Raise the chunk size when you have measured that your names fit:
+    ///
+    /// ```
+    /// use xlm_ns_sdk::{ClientConfig, XlmNsClient};
+    ///
+    /// let client = XlmNsClient::builder("https://soroban-testnet.stellar.org")
+    ///     .config(ClientConfig::default().with_batch_chunk_size(100))
+    ///     .build();
+    ///
+    /// assert_eq!(client.config.batch_chunk_size, 100);
+    /// ```
+    pub async fn batch_resolve(&self, names: Vec<String>) -> Result<Vec<BatchResult>, SdkError> {
+        let resolver_contract_id =
+            Self::require_contract_id(&self.resolver_contract_id, "resolver contract ID")?
+                .to_string();
+
+        if names.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Names that cannot possibly resolve are failed locally so they never
+        // consume space in a chunk. `pending` keeps each survivor's index in
+        // the caller's input so ordering survives chunking.
+        let mut results: Vec<Option<BatchResult>> = vec![None; names.len()];
+        let mut pending: Vec<(usize, String)> = Vec::with_capacity(names.len());
+
+        for (index, name) in names.iter().enumerate() {
+            match validate_batch_name(name) {
+                Ok(()) => pending.push((index, name.clone())),
+                Err(reason) => {
+                    results[index] = Some(BatchResult::failure(
+                        name.clone(),
+                        BatchResolveError::InvalidName { reason },
+                    ));
+                }
+            }
+        }
+
+        let chunk_size = self.config.batch_chunk_size.max(1);
+        for chunk in pending.chunks(chunk_size) {
+            let chunk_names: Vec<String> = chunk.iter().map(|(_, name)| name.clone()).collect();
+            let resolver_id = resolver_contract_id.clone();
+
+            // Retries apply per chunk, so a transient blip on one invocation
+            // does not re-send the chunks that already succeeded.
+            let records = self
+                .execute_with_retry("resolver_batch_resolve", move |_client| {
+                    let chunk_names = chunk_names.clone();
+                    let resolver_id = resolver_id.clone();
+                    async move { Self::mock_batch_resolve(Some(resolver_id), &chunk_names) }
+                })
+                .await;
+
+            match records {
+                Ok(records) => {
+                    for ((index, name), record) in chunk.iter().zip(records) {
+                        results[*index] = Some(Self::batch_result_from_entry(name, record));
+                    }
+                }
+                // A malformed request would fail identically on every chunk, so
+                // surface it rather than burying it in per-name errors.
+                Err(err @ SdkError::InvalidRequest(_)) => return Err(err),
+                Err(err) => {
+                    let reason = err.to_string();
+                    for (index, name) in chunk {
+                        results[*index] = Some(BatchResult::failure(
+                            name.clone(),
+                            BatchResolveError::Rpc {
+                                reason: reason.clone(),
+                            },
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Every slot was filled by the validation pass or by a chunk above.
+        Ok(results.into_iter().flatten().collect())
+    }
+
+    /// Turns one slot of the resolver's batch response into a [`BatchResult`].
+    fn batch_result_from_entry(name: &str, entry: Option<RegistryEntry>) -> BatchResult {
+        let Some(entry) = entry else {
+            return BatchResult::failure(name, BatchResolveError::NotFound);
+        };
+
+        if !xlm_ns_common::is_active_at(entry.grace_period_ends_at, mock_now()) {
+            return BatchResult::failure(
+                name,
+                BatchResolveError::Expired {
+                    expired_at: entry.expires_at,
+                },
+            );
+        }
+
+        // Mirrors `resolve`: the resolver's record wins over the registry's
+        // cached target address when a resolver is attached.
+        let address = match entry.resolver.as_deref() {
+            Some(_) => Some(Self::mock_resolution_record(name, 0).address),
+            None => entry.target_address.clone(),
+        };
+
+        match address {
+            Some(address) => BatchResult::success(
+                name,
+                address,
+                Some(entry.ttl_seconds),
+                Some(entry.expires_at),
+            ),
+            None => BatchResult::failure(name, BatchResolveError::NoAddress),
+        }
+    }
+
+    /// Mirrors the resolver contract's `batch_resolve` return shape: one slot
+    /// per requested name, `None` where the resolver holds no record.
+    ///
+    /// A `rpcfail`-prefixed label makes the whole invocation fail with a
+    /// retryable transport error, standing in for a chunk whose RPC call did
+    /// not come back.
+    fn mock_batch_resolve(
+        resolver_contract_id: Option<String>,
+        names: &[String],
+    ) -> Result<Vec<Option<RegistryEntry>>, SdkError> {
+        #[cfg(test)]
+        CHUNK_INVOCATIONS.with(|count| count.set(count.get() + 1));
+
+        let label_of = |name: &String| {
+            name.split('.')
+                .next()
+                .unwrap_or_default()
+                .to_ascii_lowercase()
+        };
+
+        if names
+            .iter()
+            .any(|name| label_of(name).starts_with("rpcfail"))
+        {
+            return Err(SdkError::Transport(
+                "503 service unavailable (simulated)".to_string(),
+            ));
+        }
+
+        Ok(names
+            .iter()
+            .map(|name| {
+                let label = label_of(name);
+                if label.starts_with("notfound") {
+                    return None;
+                }
+
+                let mut entry = Self::mock_registry_entry(resolver_contract_id.clone(), name, 0);
+                if label.starts_with("expired") {
+                    entry.expires_at = MOCK_REFERENCE_TIMESTAMP - SECONDS_PER_YEAR;
+                    entry.grace_period_ends_at = entry.expires_at + GRACE_PERIOD_SECONDS;
+                }
+                if label.starts_with("noaddress") {
+                    entry.resolver = None;
+                    entry.target_address = None;
+                }
+                Some(entry)
+            })
+            .collect())
     }
 
     pub async fn get_registry_metadata(&self, name: &str) -> Result<NameRecord, SdkError> {

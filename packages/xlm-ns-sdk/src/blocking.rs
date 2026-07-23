@@ -28,7 +28,7 @@ use crate::client::XlmNsClient;
 use crate::config::ClientConfig;
 use crate::errors::SdkError;
 use crate::types::{
-    AddControllerRequest, AuctionCreateRequest, AuctionInfo, BidRequest, BridgeRoute,
+    AddControllerRequest, AuctionCreateRequest, AuctionInfo, BatchResult, BidRequest, BridgeRoute,
     BuildMessageRequest, CreateSubdomainRequest, NftRecord, PortfolioPage, RegisterChainRequest,
     RegisterParentRequest, RegistrationQuote, RegistrationReceipt, RegistrationRequest,
     RenewalReceipt, RenewalRequest, ResolutionResult, ReverseResolution, TextRecord,
@@ -109,6 +109,12 @@ impl XlmNsBlockingClient {
 
     pub fn resolve(&self, name: &str) -> Result<ResolutionResult, SdkError> {
         self.block_on(self.inner.resolve(name))
+    }
+
+    /// Synchronous [`XlmNsClient::batch_resolve`]. Chunking, per-chunk retry,
+    /// and per-name error reporting behave identically to the async method.
+    pub fn batch_resolve(&self, names: Vec<String>) -> Result<Vec<BatchResult>, SdkError> {
+        self.block_on(self.inner.batch_resolve(names))
     }
 
     pub fn get_registration(&self, name: &str) -> Result<Option<ResolutionResult>, SdkError> {
