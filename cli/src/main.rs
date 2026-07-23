@@ -315,6 +315,23 @@ enum AuctionCommands {
         #[arg(long)]
         signer: Option<String>,
     },
+    /// Guide a bid with auction status, simulation, and confirmation.
+    BidInteractive {
+        /// Name under auction
+        name: String,
+        /// Bid amount in XLM. Required with --no-interactive, --output json, or --output csv.
+        #[arg(long)]
+        amount: Option<u64>,
+        /// Do not prompt for bid confirmation; intended for scripts and CI.
+        #[arg(long)]
+        no_interactive: bool,
+        /// Poll the auction until it completes and report the final state.
+        #[arg(long)]
+        watch: bool,
+        /// Signer profile
+        #[arg(long)]
+        signer: Option<String>,
+    },
     /// Inspect the state of an auction
     Inspect {
         /// Name to inspect
@@ -685,6 +702,24 @@ async fn run_with_cli(cli: Cli) -> anyhow::Result<()> {
                 )
                 .await
             }
+            AuctionCommands::BidInteractive {
+                name,
+                amount,
+                no_interactive,
+                watch,
+                signer,
+            } => {
+                commands::auction::run_bid_interactive(
+                    config,
+                    cli.output,
+                    &name,
+                    amount,
+                    resolve_signer(signer)?,
+                    no_interactive,
+                    watch,
+                )
+                .await
+            }
             AuctionCommands::Inspect { name } => {
                 commands::auction::run_inspect(config, &name).await
             }
@@ -848,6 +883,7 @@ fn error_context(command: &Commands) -> error::ErrorContext {
         Commands::Auction(sub) => match sub {
             AuctionCommands::Create { name, .. }
             | AuctionCommands::Bid { name, .. }
+            | AuctionCommands::BidInteractive { name, .. }
             | AuctionCommands::Inspect { name }
             | AuctionCommands::Settle { name, .. }
             | AuctionCommands::Export { name, .. }

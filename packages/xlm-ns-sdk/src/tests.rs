@@ -336,6 +336,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn simulate_auction_bid_returns_preflight_details() {
+        let simulation = client()
+            .simulate_bid_auction(&BidRequest {
+                name: "active.xlm".into(),
+                amount: 200,
+                signer: Some("auction-bidder".into()),
+            })
+            .await
+            .unwrap();
+
+        assert!(simulation.success);
+        assert!(simulation.fee_estimate > 0);
+        assert_eq!(simulation.auth_addresses, vec!["auction-bidder"]);
+    }
+
+    #[tokio::test]
     async fn auction_state_handles_not_found() {
         use crate::errors::ContractErrorCode;
         use crate::errors::SdkError;
