@@ -167,6 +167,35 @@ pub struct RegistrationQuote {
     pub contract_id: Option<String>,
 }
 
+/// The registrar's current lifecycle classification for a label.
+///
+/// `Unavailable` means the label has no current registration record, while
+/// `Claimable` means a previous registration has passed its grace period. Both
+/// states can be registered by a new owner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegistrationStatus {
+    Unavailable,
+    Active,
+    GracePeriod,
+    Claimable,
+    Reserved,
+}
+
+/// A registration preview combining lifecycle, ownership, and pricing data.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AvailabilityResult {
+    /// Whether the label can be registered by a new owner now.
+    pub available: bool,
+    /// The registrar lifecycle status used to determine availability.
+    pub status: RegistrationStatus,
+    /// A complete registration quote when the label is registerable.
+    pub quote: Option<RegistrationQuote>,
+    /// The current registrant for active or grace-period names.
+    pub current_owner: Option<String>,
+    /// The current registration expiry for active or grace-period names.
+    pub expires_at: Option<u64>,
+}
+
 impl RegistrationQuote {
     /// Backwards-friendly accessor: the headline fee a caller should pay.
     pub fn fee(&self) -> u64 {
@@ -430,6 +459,8 @@ pub struct AuctionInfo {
     pub reserve_price: u64,
     pub highest_bid: u64,
     pub highest_bidder: Option<String>,
+    /// Number of bids accepted by the auction so far.
+    pub bid_count: u32,
     pub ends_at: u64,
     pub status: AuctionStatus,
 }

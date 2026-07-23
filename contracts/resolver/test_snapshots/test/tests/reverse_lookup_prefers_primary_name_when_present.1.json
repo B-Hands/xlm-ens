@@ -171,6 +171,14 @@
                   },
                   {
                     "key": {
+                      "symbol": "ttl_seconds"
+                    },
+                    "val": {
+                      "u64": "300"
+                    }
+                  },
+                  {
+                    "key": {
                       "symbol": "updated_at"
                     },
                     "val": {
@@ -252,6 +260,14 @@
                     },
                     "val": {
                       "map": []
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "ttl_seconds"
+                    },
+                    "val": {
+                      "u64": "300"
                     }
                   },
                   {

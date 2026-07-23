@@ -46,6 +46,7 @@ enum DataKey {
     Admin,
     ContractVersion,
     MaxDepth,
+    MaxSubdomainsPerParent,
 }
 
 #[contracterror]
@@ -59,9 +60,11 @@ pub enum SubdomainError {
     Unauthorized = 5,
     UpgradeFailed = 6,
     DepthLimitExceeded = 7,
+    ParentSubdomainLimitReached = 8,
 }
 
 pub const CONTRACT_VERSION: u32 = 1;
+pub const DEFAULT_MAX_SUBDOMAINS_PER_PARENT: u32 = 100;
 
 #[contractevent]
 pub struct ContractUpgraded {
@@ -88,6 +91,10 @@ impl SubdomainContract {
             .persistent()
             .set(&DataKey::ContractVersion, &CONTRACT_VERSION);
         env.storage().persistent().set(&DataKey::MaxDepth, &3u32);
+        env.storage().persistent().set(
+            &DataKey::MaxSubdomainsPerParent,
+            &DEFAULT_MAX_SUBDOMAINS_PER_PARENT,
+        );
         Ok(())
     }
 
@@ -130,6 +137,26 @@ impl SubdomainContract {
             .persistent()
             .get(&DataKey::MaxDepth)
             .unwrap_or(3)
+    }
+
+    pub fn set_max_subdomains_per_parent(env: Env, limit: u32) -> Result<(), SubdomainError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(SubdomainError::Unauthorized)?;
+        admin.require_auth();
+        env.storage()
+            .persistent()
+            .set(&DataKey::MaxSubdomainsPerParent, &limit);
+        Ok(())
+    }
+
+    pub fn get_max_subdomains_per_parent(env: Env) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::MaxSubdomainsPerParent)
+            .unwrap_or(DEFAULT_MAX_SUBDOMAINS_PER_PARENT)
     }
 
     pub fn upgrade(
@@ -302,6 +329,12 @@ impl SubdomainContract {
         let key = DataKey::Subdomain(fqdn.clone());
         if env.storage().persistent().has(&key) {
             return Err(SubdomainError::AlreadyExists);
+        }
+
+        if get_parent_subdomains(&env, &parent).len()
+            >= Self::get_max_subdomains_per_parent(env.clone())
+        {
+            return Err(SubdomainError::ParentSubdomainLimitReached);
         }
 
         let record = SubdomainRecord {

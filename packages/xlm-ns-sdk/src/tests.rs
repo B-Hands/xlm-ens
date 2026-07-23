@@ -26,12 +26,13 @@
 )]
 #[cfg(test)]
 mod tests {
+    use crate::blocking::XlmNsBlockingClient;
     use crate::client::XlmNsClient;
     use crate::errors::SdkError;
     use crate::network;
     use crate::types::{
-        RegistrationRequest, RenewalRequest, SubmissionStatus, TextRecordUpdate, TextRecordsUpdate,
-        TransferRequest,
+        RegistrationRequest, RegistrationStatus, RenewalRequest, SubmissionStatus,
+        TextRecordUpdate, TextRecordsUpdate, TransferRequest,
     };
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -159,6 +160,65 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn availability_check_returns_quote_for_available_name() {
+        let availability = client().check_availability("available", 2).await.unwrap();
+
+        assert!(availability.available);
+        assert_eq!(availability.status, RegistrationStatus::Unavailable);
+        assert_eq!(
+            availability
+                .quote
+                .as_ref()
+                .map(|quote| quote.duration_years),
+            Some(2)
+        );
+        assert!(availability.current_owner.is_none());
+        assert!(availability.expires_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn availability_check_includes_owner_and_expiry_for_taken_name() {
+        let availability = client().check_availability("taken", 1).await.unwrap();
+
+        assert!(!availability.available);
+        assert_eq!(availability.status, RegistrationStatus::Active);
+        assert!(availability.quote.is_none());
+        assert_eq!(availability.current_owner.as_deref(), Some("GDRA...OWNER"));
+        assert!(availability.expires_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn availability_check_reports_reserved_names() {
+        let availability = client().check_availability("reserved", 1).await.unwrap();
+
+        assert!(!availability.available);
+        assert_eq!(availability.status, RegistrationStatus::Reserved);
+        assert!(availability.quote.is_none());
+        assert!(availability.current_owner.is_none());
+        assert!(availability.expires_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn availability_check_includes_expiry_context_during_grace_period() {
+        let availability = client().check_availability("grace", 1).await.unwrap();
+
+        assert!(!availability.available);
+        assert_eq!(availability.status, RegistrationStatus::GracePeriod);
+        assert!(availability.quote.is_none());
+        assert_eq!(availability.current_owner.as_deref(), Some("GDRA...OWNER"));
+        assert!(availability.expires_at.is_some());
+    }
+
+    #[test]
+    fn blocking_availability_check_delegates_to_async_client() {
+        let client = XlmNsBlockingClient::from_async(client()).unwrap();
+        let availability = client.check_availability("available", 1).unwrap();
+
+        assert!(availability.available);
+        assert!(availability.quote.is_some());
+    }
+
+    #[tokio::test]
     async fn registration_receipt_carries_submission_metadata() {
         // "beta" = 4 chars → 250_000_000 stroops/year (contract tier: 4–6 chars)
         let receipt = client()
@@ -273,6 +333,22 @@ mod tests {
         let state = client().get_auction_state("active.xlm").await.unwrap();
         assert_eq!(state.highest_bid, 150);
         assert!(state.end_time > 0);
+    }
+
+    #[tokio::test]
+    async fn simulate_auction_bid_returns_preflight_details() {
+        let simulation = client()
+            .simulate_bid_auction(&BidRequest {
+                name: "active.xlm".into(),
+                amount: 200,
+                signer: Some("auction-bidder".into()),
+            })
+            .await
+            .unwrap();
+
+        assert!(simulation.success);
+        assert!(simulation.fee_estimate > 0);
+        assert_eq!(simulation.auth_addresses, vec!["auction-bidder"]);
     }
 
     #[tokio::test]
