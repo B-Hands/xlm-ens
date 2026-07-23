@@ -618,6 +618,76 @@ mod tests {
     }
 
     #[test]
+    fn rate_limit_at_exact_boundary_tracks_limit_and_rejects_one_over() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(RegistrarContract, ());
+        let client = RegistrarContractClient::new(&env, &contract_id);
+        let registry_id = env.register(RegistryContract, ());
+        client.initialize(&registry_id, &Address::generate(&env));
+
+        let owner = Address::generate(&env);
+        let now = 86_400u64;
+
+        for i in 0..5 {
+            let label = String::from_str(&env, &format!("edge{}", i));
+            let quote = client.quote_registration(&label, &1, &now);
+            assert_eq!(
+                client.try_register(&label, &owner, &1, &quote.fee_stroops, &now),
+                Ok(Ok(()))
+            );
+        }
+        assert_eq!(client.get_registrations_in_window(&owner, &now), 5);
+
+        let sixth = String::from_str(&env, "edge5");
+        let quote = client.quote_registration(&sixth, &1, &now);
+        assert_eq!(
+            client.try_register(&sixth, &owner, &1, &quote.fee_stroops, &now),
+            Err(Ok(RegistrarError::RateLimitExceeded))
+        );
+        assert_eq!(client.get_registrations_in_window(&owner, &now), 5);
+        assert_eq!(client.fee_metrics().total_registrations, 5);
+    }
+
+    #[test]
+    fn rate_limit_window_resets_after_window_start_transitions() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(RegistrarContract, ());
+        let client = RegistrarContractClient::new(&env, &contract_id);
+        let registry_id = env.register(RegistryContract, ());
+        client.initialize(&registry_id, &Address::generate(&env));
+
+        let owner = Address::generate(&env);
+        // At this timestamp the saturating window key is zero.
+        let window_boundary = 86_400u64;
+        for i in 0..5 {
+            let label = String::from_str(&env, &format!("reset{}", i));
+            let quote = client.quote_registration(&label, &1, &window_boundary);
+            client.register(&label, &owner, &1, &quote.fee_stroops, &window_boundary);
+        }
+
+        // One second later the calculated key transitions from 0 to 1, so a
+        // fresh count is used for the new window.
+        let after_boundary = window_boundary + 1;
+        assert_eq!(
+            client.get_registrations_in_window(&owner, &after_boundary),
+            0
+        );
+        let label = String::from_str(&env, "resetnext");
+        let quote = client.quote_registration(&label, &1, &after_boundary);
+        assert_eq!(
+            client.try_register(&label, &owner, &1, &quote.fee_stroops, &after_boundary),
+            Ok(Ok(()))
+        );
+        assert_eq!(
+            client.get_registrations_in_window(&owner, &after_boundary),
+            1
+        );
+        assert_eq!(client.fee_metrics().total_registrations, 6);
+    }
+
+    #[test]
     fn whitelisted_address_bypasses_rate_limit() {
         let env = Env::default();
         env.mock_all_auths();
@@ -684,6 +754,37 @@ mod tests {
         assert!(
             result.is_err(),
             "Should hit rate limit after whitelist removal"
+        );
+    }
+
+    #[test]
+    fn whitelist_removal_reenables_limit_using_registrations_recorded_while_whitelisted() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(RegistrarContract, ());
+        let client = RegistrarContractClient::new(&env, &contract_id);
+        let registry_id = env.register(RegistryContract, ());
+        client.initialize(&registry_id, &Address::generate(&env));
+
+        let owner = Address::generate(&env);
+        let now = 1_000u64;
+        client.whitelist_address(&owner);
+        for i in 0..6 {
+            let label = String::from_str(&env, &format!("bypass{}", i));
+            let quote = client.quote_registration(&label, &1, &now);
+            assert_eq!(
+                client.try_register(&label, &owner, &1, &quote.fee_stroops, &now),
+                Ok(Ok(()))
+            );
+        }
+        assert_eq!(client.get_registrations_in_window(&owner, &now), 6);
+
+        client.remove_whitelist_address(&owner);
+        let label = String::from_str(&env, "bypassafter");
+        let quote = client.quote_registration(&label, &1, &now);
+        assert_eq!(
+            client.try_register(&label, &owner, &1, &quote.fee_stroops, &now),
+            Err(Ok(RegistrarError::RateLimitExceeded))
         );
     }
 
@@ -809,6 +910,64 @@ mod tests {
             client.register(&label4, &owner, &1, &quote4.fee_stroops, &now);
         }));
         assert!(result.is_err(), "Should fail with new limit of 3");
+    }
+
+    #[test]
+    fn lowering_rate_limit_mid_window_respects_existing_registration_count() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(RegistrarContract, ());
+        let client = RegistrarContractClient::new(&env, &contract_id);
+        let registry_id = env.register(RegistryContract, ());
+        client.initialize(&registry_id, &Address::generate(&env));
+
+        let owner = Address::generate(&env);
+        let now = 1_000u64;
+        for i in 0..5 {
+            let label = String::from_str(&env, &format!("reconfig{}", i));
+            let quote = client.quote_registration(&label, &1, &now);
+            client.register(&label, &owner, &1, &quote.fee_stroops, &now);
+        }
+        assert_eq!(client.get_registrations_in_window(&owner, &now), 5);
+
+        client.set_rate_limit_config(&86_400, &3);
+        let label = String::from_str(&env, "reconfignext");
+        let quote = client.quote_registration(&label, &1, &now);
+        assert_eq!(
+            client.try_register(&label, &owner, &1, &quote.fee_stroops, &now),
+            Err(Ok(RegistrarError::RateLimitExceeded))
+        );
+        assert_eq!(client.get_registrations_in_window(&owner, &now), 5);
+    }
+
+    #[test]
+    fn rate_limit_uses_saturating_window_start_at_zero_timestamp() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(RegistrarContract, ());
+        let client = RegistrarContractClient::new(&env, &contract_id);
+        let registry_id = env.register(RegistryContract, ());
+        client.initialize(&registry_id, &Address::generate(&env));
+
+        let owner = Address::generate(&env);
+        let now = 0u64;
+        for i in 0..5 {
+            let label = String::from_str(&env, &format!("zero{}", i));
+            let quote = client.quote_registration(&label, &1, &now);
+            assert_eq!(
+                client.try_register(&label, &owner, &1, &quote.fee_stroops, &now),
+                Ok(Ok(()))
+            );
+        }
+        // `0.saturating_sub(86_400)` and `1.saturating_sub(86_400)` both
+        // remain zero, so the counter is neither lost nor underflowed.
+        assert_eq!(client.get_registrations_in_window(&owner, &1), 5);
+        let label = String::from_str(&env, "zerolimit");
+        let quote = client.quote_registration(&label, &1, &1);
+        assert_eq!(
+            client.try_register(&label, &owner, &1, &quote.fee_stroops, &1),
+            Err(Ok(RegistrarError::RateLimitExceeded))
+        );
     }
 
     #[test]
