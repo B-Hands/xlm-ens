@@ -111,7 +111,7 @@
               "key": {
                 "vec": [
                   {
-                    "symbol": "Forward"
+                    "symbol": "ForwardV2"
                   },
                   {
                     "string": "timmy.xlm"
@@ -160,6 +160,14 @@
                     },
                     "val": {
                       "map": []
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "ttl_seconds"
+                    },
+                    "val": {
+                      "u64": "300"
                     }
                   },
                   {
