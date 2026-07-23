@@ -10,6 +10,13 @@ use xlm_ns_common::soroban::validate_fqdn_soroban;
 use xlm_ns_common::RegistryEntry;
 use xlm_ns_common::{MAX_TEXT_RECORDS, MAX_TEXT_RECORD_VALUE_LENGTH};
 
+/// Resolver records default to five minutes when they are not backed by a
+/// registry entry. This is also the compatibility value for records created
+/// before resolver-level TTLs were introduced.
+pub const DEFAULT_TTL_SECONDS: u64 = 300;
+pub const MIN_TTL_SECONDS: u64 = 60;
+pub const MAX_TTL_SECONDS: u64 = 86_400;
+
 // -------------------------------------------------------------------
 // #146: Centralized TTL extension policy
 // Soroban persistent entries age out unless explicitly bumped on every
@@ -46,7 +53,22 @@ pub struct ResolutionRecord {
     pub addresses: Map<String, String>, // chain_name -> address (e.g., "stellar" -> address, "ethereum" -> address)
     pub text_records: Map<String, String>,
     pub updated_at: u64,
+    /// Cache lifetime advertised to resolution clients.
+    pub ttl_seconds: u64,
     pub is_wildcard: bool,
+}
+
+/// Storage representation used before resolver TTLs were added. Keeping this
+/// decoder lets upgraded contracts serve existing records without forcing an
+/// eager migration over unenumerable contract storage.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+struct LegacyResolutionRecord {
+    owner: Address,
+    addresses: Map<String, String>,
+    text_records: Map<String, String>,
+    updated_at: u64,
+    is_wildcard: bool,
 }
 
 // For backwards compatibility, use a default chain identifier
@@ -69,6 +91,7 @@ pub enum BatchOp {
 #[contracttype]
 enum DataKey {
     Forward(String),
+    ForwardV2(String),
     Reverse(String), // address -> name (for primary/reverse lookups)
     Primary(String), // address -> name (for primary names)
     Wildcard(String),
@@ -94,6 +117,7 @@ pub enum ResolverError {
     // #154: batch payload exceeds the allowed operation count
     BatchTooLarge = 9,
     UpgradeFailed = 10,
+    InvalidTtl = 11,
 }
 
 // -------------------------------------------------------------------
@@ -240,7 +264,8 @@ impl ResolverContract {
     ) -> Result<(), ResolverError> {
         owner.require_auth();
         validate_fqdn_soroban(&name).map_err(|_| ResolverError::Validation)?;
-        let registry_backed_owner = registry_owner(&env, &name, now_unix)?;
+        let registry_entry = registry_entry(&env, &name, now_unix)?;
+        let registry_backed_owner = registry_entry.as_ref().map(|entry| entry.owner.clone());
         let canonical_owner = match registry_backed_owner.clone() {
             Some(registry_owner) => {
                 if registry_owner != owner {
@@ -252,8 +277,14 @@ impl ResolverContract {
         };
 
         // Get existing record and clean up old primary mappings if address changes
-        let mut addresses = match get_record(&env, &name) {
-            Ok(existing) => {
+        let existing = match get_record(&env, &name) {
+            Ok(existing) => Some(existing),
+            Err(ResolverError::RecordNotFound) => None,
+            Err(err) => return Err(err),
+        };
+
+        let mut addresses = match existing.as_ref() {
+            Some(existing) => {
                 if registry_backed_owner.is_none() && existing.owner != canonical_owner {
                     return Err(ResolverError::Unauthorized);
                 }
@@ -271,34 +302,38 @@ impl ResolverContract {
                             .remove(&DataKey::Primary(old_stellar_addr));
                     }
                 }
-                existing.addresses
+                existing.addresses.clone()
             }
-            Err(ResolverError::RecordNotFound) => Map::new(&env),
-            Err(err) => return Err(err),
+            None => Map::new(&env),
         };
 
         // Set the stellar address as the default chain
         addresses.set(String::from_str(&env, DEFAULT_CHAIN), address.clone());
 
-        let text_records = match get_record(&env, &name) {
-            Ok(existing) => existing.text_records,
-            Err(ResolverError::RecordNotFound) => Map::new(&env),
-            Err(err) => return Err(err),
-        };
+        let text_records = existing
+            .as_ref()
+            .map(|record| record.text_records.clone())
+            .unwrap_or_else(|| Map::new(&env));
+        // Preserve an owner's explicit TTL on every update. New records use
+        // the registry entry's cache policy when one is available.
+        let ttl_seconds = existing
+            .as_ref()
+            .map(|record| record.ttl_seconds)
+            .or_else(|| registry_entry.as_ref().map(|entry| entry.ttl_seconds))
+            .unwrap_or(DEFAULT_TTL_SECONDS);
 
         let record = ResolutionRecord {
             owner: canonical_owner,
             addresses,
             text_records,
             updated_at: now_unix,
+            ttl_seconds,
             is_wildcard: false,
         };
 
-        let fwd_key = DataKey::Forward(name.clone());
         let rev_key = DataKey::Reverse(address.clone());
 
-        env.storage().persistent().set(&fwd_key, &record);
-        extend_persistent_ttl(&env, &fwd_key); // #146
+        put_record(&env, &name, &record);
         env.storage().persistent().set(&rev_key, &name);
         extend_persistent_ttl(&env, &rev_key); // #146
         extend_instance_ttl(&env); // #146
@@ -418,6 +453,29 @@ impl ResolverContract {
         Ok(())
     }
 
+    /// Set the cache lifetime advertised for a resolution record.
+    pub fn set_ttl(
+        env: Env,
+        name: String,
+        caller: Address,
+        ttl_seconds: u64,
+        now_unix: u64,
+    ) -> Result<(), ResolverError> {
+        if !(MIN_TTL_SECONDS..=MAX_TTL_SECONDS).contains(&ttl_seconds) {
+            return Err(ResolverError::InvalidTtl);
+        }
+        caller.require_auth();
+        validate_fqdn_soroban(&name).map_err(|_| ResolverError::Validation)?;
+
+        let mut record = get_record(&env, &name)?;
+        assert_owner(&env, &name, &record, &caller, now_unix)?;
+        record.ttl_seconds = ttl_seconds;
+        record.updated_at = now_unix;
+        put_record(&env, &name, &record);
+        extend_instance_ttl(&env);
+        Ok(())
+    }
+
     #[allow(deprecated)]
     pub fn set_primary_name(
         env: Env,
@@ -469,6 +527,9 @@ impl ResolverContract {
         env.storage()
             .persistent()
             .remove(&DataKey::Forward(name.clone()));
+        env.storage()
+            .persistent()
+            .remove(&DataKey::ForwardV2(name.clone()));
         env.storage()
             .persistent()
             .remove(&DataKey::Wildcard(name.clone()));
@@ -539,7 +600,10 @@ impl ResolverContract {
     }
 
     pub fn has_record(env: Env, name: String) -> bool {
-        env.storage().persistent().has(&DataKey::Forward(name))
+        env.storage()
+            .persistent()
+            .has(&DataKey::ForwardV2(name.clone()))
+            || env.storage().persistent().has(&DataKey::Forward(name))
     }
 
     pub fn reverse(env: Env, address: String) -> Option<String> {
@@ -739,6 +803,14 @@ fn registry_owner(
     name: &String,
     now_unix: u64,
 ) -> Result<Option<Address>, ResolverError> {
+    Ok(registry_entry(env, name, now_unix)?.map(|entry| entry.owner))
+}
+
+fn registry_entry(
+    env: &Env,
+    name: &String,
+    now_unix: u64,
+) -> Result<Option<RegistryEntry>, ResolverError> {
     let registry = match get_registry(env) {
         Ok(registry) => registry,
         Err(ResolverError::NotInitialized) => return Ok(None),
@@ -751,7 +823,7 @@ fn registry_owner(
         (name.clone(), now_unix).into_val(env),
     );
 
-    Ok(Some(registry_entry.owner))
+    Ok(Some(registry_entry))
 }
 
 fn assert_owner(
@@ -776,9 +848,25 @@ fn assert_owner(
 }
 
 fn get_record(env: &Env, name: &String) -> Result<ResolutionRecord, ResolverError> {
+    if let Some(record) = env
+        .storage()
+        .persistent()
+        .get(&DataKey::ForwardV2(name.clone()))
+    {
+        return Ok(record);
+    }
+
     env.storage()
         .persistent()
-        .get(&DataKey::Forward(name.clone()))
+        .get::<_, LegacyResolutionRecord>(&DataKey::Forward(name.clone()))
+        .map(|legacy| ResolutionRecord {
+            owner: legacy.owner,
+            addresses: legacy.addresses,
+            text_records: legacy.text_records,
+            updated_at: legacy.updated_at,
+            ttl_seconds: DEFAULT_TTL_SECONDS,
+            is_wildcard: legacy.is_wildcard,
+        })
         .ok_or(ResolverError::RecordNotFound)
 }
 
@@ -799,11 +887,7 @@ fn resolve_with_fallback(env: &Env, name: &String) -> Option<(ResolutionRecord, 
     let max_hops = fallback_depth_limit(env);
 
     loop {
-        if let Some(record) = env
-            .storage()
-            .persistent()
-            .get::<_, ResolutionRecord>(&DataKey::Forward(current.clone()))
-        {
+        if let Ok(record) = get_record(env, &current) {
             if current == *name {
                 return Some((record, false));
             }
@@ -921,7 +1005,7 @@ fn reverse_lookup_matches_current_owner(env: &Env, name: &String, address: &Stri
 
 /// Write a record and unconditionally extend its TTL (#146).
 fn put_record(env: &Env, name: &String, record: &ResolutionRecord) {
-    let key = DataKey::Forward(name.clone());
+    let key = DataKey::ForwardV2(name.clone());
     env.storage().persistent().set(&key, record);
     extend_persistent_ttl(env, &key); // #146
 }

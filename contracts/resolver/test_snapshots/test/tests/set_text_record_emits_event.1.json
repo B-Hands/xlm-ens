@@ -87,7 +87,7 @@
               "key": {
                 "vec": [
                   {
-                    "symbol": "Forward"
+                    "symbol": "ForwardV2"
                   },
                   {
                     "string": "alice.xlm"
@@ -145,6 +145,14 @@
                           }
                         }
                       ]
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "ttl_seconds"
+                    },
+                    "val": {
+                      "u64": "300"
                     }
                   },
                   {

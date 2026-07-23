@@ -198,7 +198,7 @@
               "key": {
                 "vec": [
                   {
-                    "symbol": "Forward"
+                    "symbol": "ForwardV2"
                   },
                   {
                     "string": "alice.xlm"
@@ -251,6 +251,14 @@
                   },
                   {
                     "key": {
+                      "symbol": "ttl_seconds"
+                    },
+                    "val": {
+                      "u64": "300"
+                    }
+                  },
+                  {
+                    "key": {
                       "symbol": "updated_at"
                     },
                     "val": {
@@ -275,7 +283,7 @@
               "key": {
                 "vec": [
                   {
-                    "symbol": "Forward"
+                    "symbol": "ForwardV2"
                   },
                   {
                     "string": "pay.alice.xlm"
@@ -328,6 +336,14 @@
                   },
                   {
                     "key": {
+                      "symbol": "ttl_seconds"
+                    },
+                    "val": {
+                      "u64": "300"
+                    }
+                  },
+                  {
+                    "key": {
                       "symbol": "updated_at"
                     },
                     "val": {
@@ -352,7 +368,7 @@
               "key": {
                 "vec": [
                   {
-                    "symbol": "Forward"
+                    "symbol": "ForwardV2"
                   },
                   {
                     "string": "tip.alice.xlm"
@@ -401,6 +417,14 @@
                     },
                     "val": {
                       "map": []
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "ttl_seconds"
+                    },
+                    "val": {
+                      "u64": "300"
                     }
                   },
                   {

@@ -4,7 +4,7 @@ mod tests {
 
     use std::format;
 
-    use soroban_sdk::{testutils::Address as _, Address, Env, String, Vec};
+    use soroban_sdk::{testutils::Address as _, Address, Env, Map, String, Vec};
     use xlm_ns_common::{MAX_TEXT_RECORDS, MAX_TEXT_RECORD_VALUE_LENGTH};
 
     use crate::{BatchOp, ResolverContract, ResolverContractClient, MAX_BATCH_OPS};
@@ -76,7 +76,94 @@ mod tests {
             Some(String::from_str(&env, "@timmy"))
         );
         assert_eq!(record.updated_at, 101);
+        assert_eq!(record.ttl_seconds, DEFAULT_TTL_SECONDS);
         assert_eq!(client.reverse(&String::from_str(&env, "GABC")), Some(name));
+    }
+
+    #[test]
+    fn set_record_inherits_ttl_from_registry_entry() {
+        let (env, resolver, registry, _subdomain, resolver_id, _admin) = setup_with_subdomain(3);
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "alice.xlm");
+        let now = 100u64;
+
+        registry.register(
+            &name,
+            &owner,
+            &Some(resolver_id.to_string()),
+            &None::<String>,
+            &now,
+            &1_000,
+            &2_000,
+        );
+        let registry_ttl = registry.resolve(&name, &now).ttl_seconds;
+        resolver.set_record(&name, &owner, &String::from_str(&env, "GALICE"), &now);
+
+        assert_eq!(resolver.resolve(&name).unwrap().ttl_seconds, registry_ttl);
+    }
+
+    #[test]
+    fn owner_can_override_record_ttl_within_allowed_range() {
+        let env = Env::default();
+        env.mock_all_auths_allowing_non_root_auth();
+        let contract_id = env.register(ResolverContract, ());
+        let client = ResolverContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "timmy.xlm");
+
+        client.set_record(&name, &owner, &String::from_str(&env, "GABC"), &100);
+        client.set_ttl(&name, &owner, &900, &101);
+
+        let record = client.resolve(&name).unwrap();
+        assert_eq!(record.ttl_seconds, 900);
+        assert_eq!(record.updated_at, 101);
+    }
+
+    #[test]
+    fn ttl_must_be_between_one_minute_and_one_day() {
+        let env = Env::default();
+        env.mock_all_auths_allowing_non_root_auth();
+        let contract_id = env.register(ResolverContract, ());
+        let client = ResolverContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "timmy.xlm");
+        client.set_record(&name, &owner, &String::from_str(&env, "GABC"), &100);
+
+        let below_minimum = client.try_set_ttl(&name, &owner, &(MIN_TTL_SECONDS - 1), &101);
+        assert_eq!(below_minimum, Err(Ok(ResolverError::InvalidTtl)));
+        let above_maximum = client.try_set_ttl(&name, &owner, &(MAX_TTL_SECONDS + 1), &101);
+        assert_eq!(above_maximum, Err(Ok(ResolverError::InvalidTtl)));
+    }
+
+    #[test]
+    fn legacy_records_resolve_with_the_compatibility_ttl() {
+        let env = Env::default();
+        let contract_id = env.register(ResolverContract, ());
+        let client = ResolverContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "legacy.xlm");
+        let mut addresses = Map::new(&env);
+        addresses.set(
+            String::from_str(&env, "stellar"),
+            String::from_str(&env, "GLEGACY"),
+        );
+
+        env.as_contract(&contract_id, || {
+            env.storage().persistent().set(
+                &crate::DataKey::Forward(name.clone()),
+                &LegacyResolutionRecord {
+                    owner: owner.clone(),
+                    addresses,
+                    text_records: Map::new(&env),
+                    updated_at: 100,
+                    is_wildcard: false,
+                },
+            );
+        });
+
+        let record = client.resolve(&name).unwrap();
+        assert_eq!(record.owner, owner);
+        assert_eq!(record.ttl_seconds, DEFAULT_TTL_SECONDS);
     }
 
     #[test]
