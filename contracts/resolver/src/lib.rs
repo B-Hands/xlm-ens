@@ -567,6 +567,39 @@ impl ResolverContract {
         }
     }
 
+    /// Invalidate a forward record after a registry ownership transfer.
+    ///
+    /// The registry is the only authorized caller. Removing the record rather
+    /// than assigning it to the new owner ensures that the new owner never
+    /// inherits the previous owner's addresses or text records.
+    pub fn invalidate_record(env: Env, name: String, previous_owner: Address) {
+        let registry = get_registry(&env).expect("resolver not initialized");
+        registry.require_auth();
+
+        let Ok(record) = get_record(&env, &name) else {
+            return;
+        };
+
+        // Ignore an obsolete callback if this name has already been written
+        // by a subsequent owner.
+        if record.owner != previous_owner {
+            return;
+        }
+
+        if let Some(stellar_address) = record.addresses.get(String::from_str(&env, DEFAULT_CHAIN)) {
+            cleanup_stale_reverse(&env, &stellar_address, &name);
+        }
+
+        env.storage()
+            .persistent()
+            .remove(&DataKey::Forward(name.clone()));
+        env.storage()
+            .persistent()
+            .remove(&DataKey::ForwardV2(name.clone()));
+        env.storage().persistent().remove(&DataKey::Wildcard(name));
+        extend_instance_ttl(&env);
+    }
+
     pub fn update_owner(
         env: Env,
         name: String,
@@ -971,6 +1004,9 @@ fn reverse_lookup_matches_current_owner(env: &Env, name: &String, address: &Stri
         Some(r) => r,
         None => return false,
     };
+    if record.expires_at < env.ledger().timestamp() {
+        return false;
+    }
 
     // Check the forward record still contains this address.
     let addr_matches = record

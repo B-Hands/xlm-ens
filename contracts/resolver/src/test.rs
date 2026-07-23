@@ -341,14 +341,25 @@ mod tests {
             &1_000,
             &2_000,
         );
+        registry.set_resolver(&name, &old_owner, &Some(resolver_id.to_string()), &now);
 
         resolver.set_record(&name, &old_owner, &old_address, &now);
+        resolver.set_text_record(
+            &name,
+            &old_owner,
+            &String::from_str(&env, "com.twitter"),
+            &String::from_str(&env, "@old-owner"),
+            &now,
+        );
         resolver.set_primary_name(&old_address, &old_owner, &name);
 
         registry.transfer(&name, &old_owner, &new_owner, &(now + 10));
+        assert_eq!(resolver.resolve(&name), None);
+        resolver.set_record(&name, &new_owner, &new_address, &(now + 10));
 
         assert_eq!(resolver.reverse(&old_address), None);
-        assert_eq!(resolver.reverse(&new_address), None);
+        assert_eq!(resolver.reverse(&new_address), Some(name.clone()));
+        assert!(resolver.resolve(&name).unwrap().text_records.is_empty());
     }
 
     #[test]

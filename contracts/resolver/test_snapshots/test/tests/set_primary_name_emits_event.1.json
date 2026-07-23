@@ -110,6 +110,14 @@
                   },
                   {
                     "key": {
+                      "symbol": "expires_at"
+                    },
+                    "val": {
+                      "u64": "18446744073709551615"
+                    }
+                  },
+                  {
+                    "key": {
                       "symbol": "is_wildcard"
                     },
                     "val": {

@@ -419,6 +419,7 @@ impl XlmNsClient {
             address: format!("GDRA...RESOLVED_ADDR:{name}:{ledger}"),
             text_records: make_text_records(name),
             updated_at: MOCK_REFERENCE_TIMESTAMP,
+            expires_at: MOCK_REFERENCE_TIMESTAMP + SECONDS_PER_YEAR,
             is_wildcard: false,
         }
     }

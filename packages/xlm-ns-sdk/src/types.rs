@@ -447,6 +447,7 @@ pub struct ResolutionRecord {
     pub address: String,
     pub text_records: std::collections::HashMap<String, String>,
     pub updated_at: u64,
+    pub expires_at: u64,
     pub is_wildcard: bool,
 }
 
