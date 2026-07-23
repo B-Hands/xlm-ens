@@ -8,7 +8,7 @@ mod tests {
         Address, Env, String,
     };
 
-    use crate::{SubdomainContract, SubdomainContractClient};
+    use crate::{SubdomainContract, SubdomainContractClient, DEFAULT_MAX_SUBDOMAINS_PER_PARENT};
 
     #[test]
     fn register_parent_emits_event() {
@@ -537,5 +537,91 @@ mod tests {
             );
         }));
         assert!(result.is_err(), "subdomain depth > 4 should fail");
+    }
+
+    #[test]
+    fn default_max_subdomains_per_parent_is_enforced() {
+        let env = Env::default();
+        env.mock_all_auths_allowing_non_root_auth();
+        let contract_id = env.register_contract(None, SubdomainContract);
+        let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let owner = Address::generate(&env);
+        let parent = String::from_str(&env, "timmy.xlm");
+        client.initialize(&admin);
+        client.register_parent(&parent, &owner);
+
+        assert_eq!(
+            client.get_max_subdomains_per_parent(),
+            DEFAULT_MAX_SUBDOMAINS_PER_PARENT
+        );
+        for idx in 0..DEFAULT_MAX_SUBDOMAINS_PER_PARENT {
+            client.create(
+                &String::from_str(&env, &format!("sub{idx}")),
+                &parent,
+                &owner,
+                &owner,
+                &100,
+            );
+        }
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            client.create(
+                &String::from_str(&env, "one-too-many"),
+                &parent,
+                &owner,
+                &owner,
+                &100,
+            );
+        }));
+        assert!(
+            result.is_err(),
+            "creation beyond the default limit should fail"
+        );
+    }
+
+    #[test]
+    fn admin_can_adjust_max_subdomains_per_parent() {
+        let env = Env::default();
+        env.mock_all_auths_allowing_non_root_auth();
+        let contract_id = env.register_contract(None, SubdomainContract);
+        let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        client.set_max_subdomains_per_parent(&2);
+        assert_eq!(client.get_max_subdomains_per_parent(), 2);
+    }
+
+    #[test]
+    fn deleting_subdomain_frees_parent_slot() {
+        let env = Env::default();
+        env.mock_all_auths_allowing_non_root_auth();
+        let contract_id = env.register_contract(None, SubdomainContract);
+        let client = SubdomainContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let owner = Address::generate(&env);
+        let parent = String::from_str(&env, "timmy.xlm");
+        client.initialize(&admin);
+        client.register_parent(&parent, &owner);
+        client.set_max_subdomains_per_parent(&1);
+
+        let first = client.create(
+            &String::from_str(&env, "first"),
+            &parent,
+            &owner,
+            &owner,
+            &100,
+        );
+        client.delete(&first, &owner);
+
+        let second = client.create(
+            &String::from_str(&env, "second"),
+            &parent,
+            &owner,
+            &owner,
+            &101,
+        );
+        assert_eq!(second, String::from_str(&env, "second.timmy.xlm"));
     }
 }
