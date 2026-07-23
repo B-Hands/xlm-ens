@@ -121,6 +121,7 @@ pub trait Nft {
 #[contractclient(name = "ResolverClient")]
 pub trait Resolver {
     fn clear_reverse_record(env: Env, name: String, previous_owner: Address);
+    fn invalidate_record(env: Env, name: String, previous_owner: Address);
 }
 
 #[contractimpl]
@@ -345,7 +346,7 @@ impl RegistryContract {
         if let Some(resolver_id) = entry.resolver.clone() {
             let resolver_address = Address::from_string(&resolver_id);
             let resolver_client = ResolverClient::new(&env, &resolver_address);
-            resolver_client.clear_reverse_record(&name, &old_owner);
+            resolver_client.invalidate_record(&name, &old_owner);
         }
 
         env.events().publish(

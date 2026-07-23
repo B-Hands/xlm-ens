@@ -4,10 +4,13 @@ mod tests {
 
     use std::format;
 
-    use soroban_sdk::{testutils::Address as _, Address, Env, String, Vec};
+    use soroban_sdk::{
+        testutils::{Address as _, Ledger as _},
+        Address, Env, Map, String, Vec,
+    };
     use xlm_ns_common::{MAX_TEXT_RECORDS, MAX_TEXT_RECORD_VALUE_LENGTH};
 
-    use crate::{BatchOp, ResolverContract, ResolverContractClient};
+    use crate::{BatchOp, LegacyResolutionRecord, ResolverContract, ResolverContractClient};
     use xlm_ns_registry::{RegistryContract, RegistryContractClient};
     use xlm_ns_subdomain::{SubdomainContract, SubdomainContractClient};
 
@@ -76,7 +79,102 @@ mod tests {
             Some(String::from_str(&env, "@timmy"))
         );
         assert_eq!(record.updated_at, 101);
+        assert_eq!(record.expires_at, u64::MAX);
         assert_eq!(client.reverse(&String::from_str(&env, "GABC")), Some(name));
+    }
+
+    #[test]
+    fn set_record_inherits_expiry_from_registry_entry() {
+        let (env, resolver, registry, _subdomain, resolver_id, _admin) = setup_with_subdomain(3);
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "expiry.xlm");
+        env.ledger().set_timestamp(100);
+        registry.register(
+            &name,
+            &owner,
+            &Some(resolver_id.to_string()),
+            &None::<String>,
+            &100,
+            &200,
+            &300,
+        );
+
+        resolver.set_record(&name, &owner, &String::from_str(&env, "GEXPIRY"), &100);
+        assert_eq!(resolver.resolve(&name).unwrap().expires_at, 200);
+    }
+
+    #[test]
+    fn resolve_rejects_records_after_their_expiry() {
+        let (env, resolver, registry, _subdomain, resolver_id, _admin) = setup_with_subdomain(3);
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "stale.xlm");
+        env.ledger().set_timestamp(100);
+        registry.register(
+            &name,
+            &owner,
+            &Some(resolver_id.to_string()),
+            &None::<String>,
+            &100,
+            &200,
+            &300,
+        );
+        resolver.set_record(&name, &owner, &String::from_str(&env, "GSTALE"), &100);
+
+        env.ledger().set_timestamp(201);
+        assert_eq!(resolver.resolve(&name), None);
+        assert_eq!(resolver.reverse(&String::from_str(&env, "GSTALE")), None);
+    }
+
+    #[test]
+    fn refresh_expiry_syncs_a_renewed_registry_entry() {
+        let (env, resolver, registry, _subdomain, resolver_id, _admin) = setup_with_subdomain(3);
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "renewed.xlm");
+        env.ledger().set_timestamp(100);
+        registry.register(
+            &name,
+            &owner,
+            &Some(resolver_id.to_string()),
+            &None::<String>,
+            &100,
+            &200,
+            &300,
+        );
+        resolver.set_record(&name, &owner, &String::from_str(&env, "GRENEW"), &100);
+        registry.renew(&name, &owner, &500, &600, &100);
+
+        resolver.refresh_expiry(&name);
+        assert_eq!(resolver.resolve(&name).unwrap().expires_at, 500);
+    }
+
+    #[test]
+    fn legacy_records_default_to_never_expiring() {
+        let env = Env::default();
+        let contract_id = env.register(ResolverContract, ());
+        let client = ResolverContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "legacy.xlm");
+        let mut addresses = Map::new(&env);
+        addresses.set(
+            String::from_str(&env, "stellar"),
+            String::from_str(&env, "GLEGACY"),
+        );
+
+        env.as_contract(&contract_id, || {
+            env.storage().persistent().set(
+                &crate::DataKey::Forward(name.clone()),
+                &LegacyResolutionRecord {
+                    owner: owner.clone(),
+                    addresses,
+                    text_records: Map::new(&env),
+                    updated_at: 100,
+                    is_wildcard: false,
+                },
+            );
+        });
+        env.ledger().set_timestamp(1_000_000);
+
+        assert_eq!(client.resolve(&name).unwrap().expires_at, u64::MAX);
     }
 
     #[test]
@@ -254,14 +352,25 @@ mod tests {
             &1_000,
             &2_000,
         );
+        registry.set_resolver(&name, &old_owner, &Some(resolver_id.to_string()), &now);
 
         resolver.set_record(&name, &old_owner, &old_address, &now);
+        resolver.set_text_record(
+            &name,
+            &old_owner,
+            &String::from_str(&env, "com.twitter"),
+            &String::from_str(&env, "@old-owner"),
+            &now,
+        );
         resolver.set_primary_name(&old_address, &old_owner, &name);
 
         registry.transfer(&name, &old_owner, &new_owner, &(now + 10));
+        assert_eq!(resolver.resolve(&name), None);
+        resolver.set_record(&name, &new_owner, &new_address, &(now + 10));
 
         assert_eq!(resolver.reverse(&old_address), None);
-        assert_eq!(resolver.reverse(&new_address), None);
+        assert_eq!(resolver.reverse(&new_address), Some(name.clone()));
+        assert!(resolver.resolve(&name).unwrap().text_records.is_empty());
     }
 
     #[test]

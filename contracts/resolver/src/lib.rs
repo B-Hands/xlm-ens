@@ -46,7 +46,23 @@ pub struct ResolutionRecord {
     pub addresses: Map<String, String>, // chain_name -> address (e.g., "stellar" -> address, "ethereum" -> address)
     pub text_records: Map<String, String>,
     pub updated_at: u64,
+    /// Resolver-level validity boundary, normally inherited from the registry.
+    pub expires_at: u64,
     pub is_wildcard: bool,
+}
+
+/// Storage representation used before resolver records tracked expiry.
+///
+/// Legacy records are read through this schema and exposed with an unlimited
+/// expiry so upgrading the contract never makes existing mappings undecodable.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+struct LegacyResolutionRecord {
+    owner: Address,
+    addresses: Map<String, String>,
+    text_records: Map<String, String>,
+    updated_at: u64,
+    is_wildcard: bool,
 }
 
 // For backwards compatibility, use a default chain identifier
@@ -69,6 +85,7 @@ pub enum BatchOp {
 #[contracttype]
 enum DataKey {
     Forward(String),
+    ForwardV2(String),
     Reverse(String), // address -> name (for primary/reverse lookups)
     Primary(String), // address -> name (for primary names)
     Wildcard(String),
@@ -240,7 +257,8 @@ impl ResolverContract {
     ) -> Result<(), ResolverError> {
         owner.require_auth();
         validate_fqdn_soroban(&name).map_err(|_| ResolverError::Validation)?;
-        let registry_backed_owner = registry_owner(&env, &name, now_unix)?;
+        let registry_entry = registry_entry(&env, &name, now_unix)?;
+        let registry_backed_owner = registry_entry.as_ref().map(|entry| entry.owner.clone());
         let canonical_owner = match registry_backed_owner.clone() {
             Some(registry_owner) => {
                 if registry_owner != owner {
@@ -251,9 +269,36 @@ impl ResolverContract {
             None => owner.clone(),
         };
 
-        // Get existing record and clean up old primary mappings if address changes
-        let mut addresses = match get_record(&env, &name) {
-            Ok(existing) => {
+        let existing = match get_record(&env, &name) {
+            Ok(existing) => Some(existing),
+            Err(ResolverError::RecordNotFound) => None,
+            Err(err) => return Err(err),
+        };
+        let owner_changed = registry_backed_owner.is_some()
+            && existing
+                .as_ref()
+                .map(|record| record.owner != canonical_owner)
+                .unwrap_or(false);
+
+        // Owner changes must not inherit an expired registrant's records.
+        // Clean up their Stellar reverse mapping before starting fresh.
+        if owner_changed {
+            if let Some(old_address) = existing
+                .as_ref()
+                .and_then(|record| record.addresses.get(String::from_str(&env, DEFAULT_CHAIN)))
+            {
+                env.storage()
+                    .persistent()
+                    .remove(&DataKey::Reverse(old_address.clone()));
+                env.storage()
+                    .persistent()
+                    .remove(&DataKey::Primary(old_address));
+            }
+        }
+
+        // Get existing record and clean up old primary mappings if address changes.
+        let mut addresses = match existing.as_ref() {
+            Some(existing) if !owner_changed => {
                 if registry_backed_owner.is_none() && existing.owner != canonical_owner {
                     return Err(ResolverError::Unauthorized);
                 }
@@ -271,19 +316,21 @@ impl ResolverContract {
                             .remove(&DataKey::Primary(old_stellar_addr));
                     }
                 }
-                existing.addresses
+                existing.addresses.clone()
             }
-            Err(ResolverError::RecordNotFound) => Map::new(&env),
-            Err(err) => return Err(err),
+            _ => Map::new(&env),
         };
 
         // Set the stellar address as the default chain
         addresses.set(String::from_str(&env, DEFAULT_CHAIN), address.clone());
 
-        let text_records = match get_record(&env, &name) {
-            Ok(existing) => existing.text_records,
-            Err(ResolverError::RecordNotFound) => Map::new(&env),
-            Err(err) => return Err(err),
+        let text_records = if owner_changed {
+            Map::new(&env)
+        } else {
+            existing
+                .as_ref()
+                .map(|record| record.text_records.clone())
+                .unwrap_or_else(|| Map::new(&env))
         };
 
         let record = ResolutionRecord {
@@ -291,14 +338,16 @@ impl ResolverContract {
             addresses,
             text_records,
             updated_at: now_unix,
+            expires_at: registry_entry
+                .as_ref()
+                .map(|entry| entry.expires_at)
+                .unwrap_or(u64::MAX),
             is_wildcard: false,
         };
 
-        let fwd_key = DataKey::Forward(name.clone());
         let rev_key = DataKey::Reverse(address.clone());
 
-        env.storage().persistent().set(&fwd_key, &record);
-        extend_persistent_ttl(&env, &fwd_key); // #146
+        put_record(&env, &name, &record);
         env.storage().persistent().set(&rev_key, &name);
         extend_persistent_ttl(&env, &rev_key); // #146
         extend_instance_ttl(&env); // #146
@@ -418,6 +467,20 @@ impl ResolverContract {
         Ok(())
     }
 
+    /// Synchronize a record's expiry with its currently active registry entry.
+    /// This may be called after a name renewal when no registry callback is
+    /// available to the resolver deployment.
+    pub fn refresh_expiry(env: Env, name: String) -> Result<(), ResolverError> {
+        validate_fqdn_soroban(&name).map_err(|_| ResolverError::Validation)?;
+        let mut record = get_record(&env, &name)?;
+        let now_unix = env.ledger().timestamp();
+        let entry = registry_entry(&env, &name, now_unix)?.ok_or(ResolverError::NotInitialized)?;
+        record.expires_at = entry.expires_at;
+        put_record(&env, &name, &record);
+        extend_instance_ttl(&env);
+        Ok(())
+    }
+
     #[allow(deprecated)]
     pub fn set_primary_name(
         env: Env,
@@ -471,6 +534,9 @@ impl ResolverContract {
             .remove(&DataKey::Forward(name.clone()));
         env.storage()
             .persistent()
+            .remove(&DataKey::ForwardV2(name.clone()));
+        env.storage()
+            .persistent()
             .remove(&DataKey::Wildcard(name.clone()));
 
         // #141: Emit removal event
@@ -506,6 +572,39 @@ impl ResolverContract {
         }
     }
 
+    /// Invalidate a forward record after a registry ownership transfer.
+    ///
+    /// The registry is the only authorized caller. Removing the record rather
+    /// than assigning it to the new owner ensures that the new owner never
+    /// inherits the previous owner's addresses or text records.
+    pub fn invalidate_record(env: Env, name: String, previous_owner: Address) {
+        let registry = get_registry(&env).expect("resolver not initialized");
+        registry.require_auth();
+
+        let Ok(record) = get_record(&env, &name) else {
+            return;
+        };
+
+        // Ignore an obsolete callback if this name has already been written
+        // by a subsequent owner.
+        if record.owner != previous_owner {
+            return;
+        }
+
+        if let Some(stellar_address) = record.addresses.get(String::from_str(&env, DEFAULT_CHAIN)) {
+            cleanup_stale_reverse(&env, &stellar_address, &name);
+        }
+
+        env.storage()
+            .persistent()
+            .remove(&DataKey::Forward(name.clone()));
+        env.storage()
+            .persistent()
+            .remove(&DataKey::ForwardV2(name.clone()));
+        env.storage().persistent().remove(&DataKey::Wildcard(name));
+        extend_instance_ttl(&env);
+    }
+
     pub fn update_owner(
         env: Env,
         name: String,
@@ -539,7 +638,10 @@ impl ResolverContract {
     }
 
     pub fn has_record(env: Env, name: String) -> bool {
-        env.storage().persistent().has(&DataKey::Forward(name))
+        env.storage()
+            .persistent()
+            .has(&DataKey::ForwardV2(name.clone()))
+            || env.storage().persistent().has(&DataKey::Forward(name))
     }
 
     pub fn reverse(env: Env, address: String) -> Option<String> {
@@ -735,6 +837,14 @@ fn registry_owner(
     name: &String,
     now_unix: u64,
 ) -> Result<Option<Address>, ResolverError> {
+    Ok(registry_entry(env, name, now_unix)?.map(|entry| entry.owner))
+}
+
+fn registry_entry(
+    env: &Env,
+    name: &String,
+    now_unix: u64,
+) -> Result<Option<RegistryEntry>, ResolverError> {
     let registry = match get_registry(env) {
         Ok(registry) => registry,
         Err(ResolverError::NotInitialized) => return Ok(None),
@@ -747,7 +857,7 @@ fn registry_owner(
         (name.clone(), now_unix).into_val(env),
     );
 
-    Ok(Some(registry_entry.owner))
+    Ok(Some(registry_entry))
 }
 
 fn assert_owner(
@@ -772,9 +882,25 @@ fn assert_owner(
 }
 
 fn get_record(env: &Env, name: &String) -> Result<ResolutionRecord, ResolverError> {
+    if let Some(record) = env
+        .storage()
+        .persistent()
+        .get(&DataKey::ForwardV2(name.clone()))
+    {
+        return Ok(record);
+    }
+
     env.storage()
         .persistent()
-        .get(&DataKey::Forward(name.clone()))
+        .get::<_, LegacyResolutionRecord>(&DataKey::Forward(name.clone()))
+        .map(|legacy| ResolutionRecord {
+            owner: legacy.owner,
+            addresses: legacy.addresses,
+            text_records: legacy.text_records,
+            updated_at: legacy.updated_at,
+            expires_at: u64::MAX,
+            is_wildcard: legacy.is_wildcard,
+        })
         .ok_or(ResolverError::RecordNotFound)
 }
 
@@ -795,11 +921,10 @@ fn resolve_with_fallback(env: &Env, name: &String) -> Option<(ResolutionRecord, 
     let max_hops = fallback_depth_limit(env);
 
     loop {
-        if let Some(record) = env
-            .storage()
-            .persistent()
-            .get::<_, ResolutionRecord>(&DataKey::Forward(current.clone()))
-        {
+        if let Ok(record) = get_record(env, &current) {
+            if record.expires_at < env.ledger().timestamp() {
+                return None;
+            }
             if current == *name {
                 return Some((record, false));
             }
@@ -883,6 +1008,9 @@ fn reverse_lookup_matches_current_owner(env: &Env, name: &String, address: &Stri
         Some(r) => r,
         None => return false,
     };
+    if record.expires_at < env.ledger().timestamp() {
+        return false;
+    }
 
     // Check the forward record still contains this address.
     let addr_matches = record
@@ -917,7 +1045,7 @@ fn reverse_lookup_matches_current_owner(env: &Env, name: &String, address: &Stri
 
 /// Write a record and unconditionally extend its TTL (#146).
 fn put_record(env: &Env, name: &String, record: &ResolutionRecord) {
-    let key = DataKey::Forward(name.clone());
+    let key = DataKey::ForwardV2(name.clone());
     env.storage().persistent().set(&key, record);
     extend_persistent_ttl(env, &key); // #146
 }

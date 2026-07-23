@@ -585,7 +585,7 @@
               "key": {
                 "vec": [
                   {
-                    "symbol": "Forward"
+                    "symbol": "ForwardV2"
                   },
                   {
                     "string": "alice.xlm"
@@ -610,6 +610,14 @@
                           }
                         }
                       ]
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "expires_at"
+                    },
+                    "val": {
+                      "u64": "18446744073709551615"
                     }
                   },
                   {
