@@ -110,7 +110,7 @@
               "key": {
                 "vec": [
                   {
-                    "symbol": "Forward"
+                    "symbol": "ForwardV2"
                   },
                   {
                     "string": "pay.timmy.xlm"
@@ -139,6 +139,14 @@
                   },
                   {
                     "key": {
+                      "symbol": "expires_at"
+                    },
+                    "val": {
+                      "u64": "18446744073709551615"
+                    }
+                  },
+                  {
+                    "key": {
                       "symbol": "is_wildcard"
                     },
                     "val": {
@@ -159,6 +167,14 @@
                     },
                     "val": {
                       "map": []
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "ttl_seconds"
+                    },
+                    "val": {
+                      "u64": "300"
                     }
                   },
                   {
@@ -187,7 +203,7 @@
               "key": {
                 "vec": [
                   {
-                    "symbol": "Forward"
+                    "symbol": "ForwardV2"
                   },
                   {
                     "string": "timmy.xlm"
@@ -216,6 +232,14 @@
                   },
                   {
                     "key": {
+                      "symbol": "expires_at"
+                    },
+                    "val": {
+                      "u64": "18446744073709551615"
+                    }
+                  },
+                  {
+                    "key": {
                       "symbol": "is_wildcard"
                     },
                     "val": {
@@ -236,6 +260,14 @@
                     },
                     "val": {
                       "map": []
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "ttl_seconds"
+                    },
+                    "val": {
+                      "u64": "300"
                     }
                   },
                   {

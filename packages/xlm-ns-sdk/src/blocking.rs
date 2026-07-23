@@ -28,11 +28,11 @@ use crate::client::XlmNsClient;
 use crate::config::ClientConfig;
 use crate::errors::SdkError;
 use crate::types::{
-    AddControllerRequest, AuctionCreateRequest, AuctionInfo, BatchResult, BidRequest, BridgeRoute,
-    BuildMessageRequest, CreateSubdomainRequest, NftRecord, PortfolioPage, RegisterChainRequest,
-    RegisterParentRequest, RegistrationQuote, RegistrationReceipt, RegistrationRequest,
-    RenewalReceipt, RenewalRequest, ResolutionResult, ReverseResolution, TextRecord,
-    TextRecordUpdate, TextRecordsUpdate, TransactionSubmission, TransferRequest,
+    AddControllerRequest, AuctionCreateRequest, AuctionInfo, AvailabilityResult, BidRequest,
+    BridgeRoute, BuildMessageRequest, CreateSubdomainRequest, NftRecord, PortfolioPage,
+    RegisterChainRequest, RegisterParentRequest, RegistrationQuote, RegistrationReceipt,
+    RegistrationRequest, RenewalReceipt, RenewalRequest, ResolutionResult, ReverseResolution,
+    TextRecord, TextRecordUpdate, TextRecordsUpdate, TransactionSubmission, TransferRequest,
     TransferSubdomainRequest,
 };
 
@@ -152,6 +152,15 @@ impl XlmNsBlockingClient {
         duration_years: u32,
     ) -> Result<RegistrationQuote, SdkError> {
         self.block_on(self.inner.quote_registration(label, duration_years))
+    }
+
+    /// Synchronously preview availability, price, and lifecycle context.
+    pub fn check_availability(
+        &self,
+        label: &str,
+        duration_years: u32,
+    ) -> Result<AvailabilityResult, SdkError> {
+        self.block_on(self.inner.check_availability(label, duration_years))
     }
 
     pub fn get_route(&self, chain: &str) -> Result<Option<BridgeRoute>, SdkError> {

@@ -44,16 +44,16 @@ impl PortfolioRecord {
     }
 }
 
-pub fn write_json(
-    records: &[PortfolioRecord],
+pub fn write_json<T: serde::Serialize>(
+    records: &[T],
     writer: &mut impl io::Write,
 ) -> Result<(), ExportError> {
     serde_json::to_writer_pretty(writer, records)?;
     Ok(())
 }
 
-pub fn write_csv(
-    records: &[PortfolioRecord],
+pub fn write_csv<T: serde::Serialize>(
+    records: &[T],
     writer: &mut impl io::Write,
 ) -> Result<(), ExportError> {
     let mut wtr = csv::Writer::from_writer(writer);

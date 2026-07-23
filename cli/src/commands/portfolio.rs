@@ -66,7 +66,7 @@ async fn build_portfolio_records(
     Ok(records)
 }
 
-fn is_timeout_error(err: &SdkError) -> bool {
+pub(crate) fn is_timeout_error(err: &SdkError) -> bool {
     match err {
         SdkError::Transport(message) | SdkError::InvalidRequest(message) => {
             let message = message.to_ascii_lowercase();

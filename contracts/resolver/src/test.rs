@@ -4,10 +4,10 @@ mod tests {
 
     use std::format;
 
-    use soroban_sdk::{testutils::Address as _, Address, Env, String, Vec};
+    use soroban_sdk::{testutils::Address as _, Address, Env, Map, String, Vec};
     use xlm_ns_common::{MAX_TEXT_RECORDS, MAX_TEXT_RECORD_VALUE_LENGTH};
 
-    use crate::{BatchOp, ResolverContract, ResolverContractClient};
+    use crate::{BatchOp, ResolverContract, ResolverContractClient, MAX_BATCH_OPS};
     use xlm_ns_registry::{RegistryContract, RegistryContractClient};
     use xlm_ns_subdomain::{SubdomainContract, SubdomainContractClient};
 
@@ -76,7 +76,94 @@ mod tests {
             Some(String::from_str(&env, "@timmy"))
         );
         assert_eq!(record.updated_at, 101);
+        assert_eq!(record.ttl_seconds, DEFAULT_TTL_SECONDS);
         assert_eq!(client.reverse(&String::from_str(&env, "GABC")), Some(name));
+    }
+
+    #[test]
+    fn set_record_inherits_ttl_from_registry_entry() {
+        let (env, resolver, registry, _subdomain, resolver_id, _admin) = setup_with_subdomain(3);
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "alice.xlm");
+        let now = 100u64;
+
+        registry.register(
+            &name,
+            &owner,
+            &Some(resolver_id.to_string()),
+            &None::<String>,
+            &now,
+            &1_000,
+            &2_000,
+        );
+        let registry_ttl = registry.resolve(&name, &now).ttl_seconds;
+        resolver.set_record(&name, &owner, &String::from_str(&env, "GALICE"), &now);
+
+        assert_eq!(resolver.resolve(&name).unwrap().ttl_seconds, registry_ttl);
+    }
+
+    #[test]
+    fn owner_can_override_record_ttl_within_allowed_range() {
+        let env = Env::default();
+        env.mock_all_auths_allowing_non_root_auth();
+        let contract_id = env.register(ResolverContract, ());
+        let client = ResolverContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "timmy.xlm");
+
+        client.set_record(&name, &owner, &String::from_str(&env, "GABC"), &100);
+        client.set_ttl(&name, &owner, &900, &101);
+
+        let record = client.resolve(&name).unwrap();
+        assert_eq!(record.ttl_seconds, 900);
+        assert_eq!(record.updated_at, 101);
+    }
+
+    #[test]
+    fn ttl_must_be_between_one_minute_and_one_day() {
+        let env = Env::default();
+        env.mock_all_auths_allowing_non_root_auth();
+        let contract_id = env.register(ResolverContract, ());
+        let client = ResolverContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "timmy.xlm");
+        client.set_record(&name, &owner, &String::from_str(&env, "GABC"), &100);
+
+        let below_minimum = client.try_set_ttl(&name, &owner, &(MIN_TTL_SECONDS - 1), &101);
+        assert_eq!(below_minimum, Err(Ok(ResolverError::InvalidTtl)));
+        let above_maximum = client.try_set_ttl(&name, &owner, &(MAX_TTL_SECONDS + 1), &101);
+        assert_eq!(above_maximum, Err(Ok(ResolverError::InvalidTtl)));
+    }
+
+    #[test]
+    fn legacy_records_resolve_with_the_compatibility_ttl() {
+        let env = Env::default();
+        let contract_id = env.register(ResolverContract, ());
+        let client = ResolverContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "legacy.xlm");
+        let mut addresses = Map::new(&env);
+        addresses.set(
+            String::from_str(&env, "stellar"),
+            String::from_str(&env, "GLEGACY"),
+        );
+
+        env.as_contract(&contract_id, || {
+            env.storage().persistent().set(
+                &crate::DataKey::Forward(name.clone()),
+                &LegacyResolutionRecord {
+                    owner: owner.clone(),
+                    addresses,
+                    text_records: Map::new(&env),
+                    updated_at: 100,
+                    is_wildcard: false,
+                },
+            );
+        });
+
+        let record = client.resolve(&name).unwrap();
+        assert_eq!(record.owner, owner);
+        assert_eq!(record.ttl_seconds, DEFAULT_TTL_SECONDS);
     }
 
     #[test]
@@ -254,14 +341,25 @@ mod tests {
             &1_000,
             &2_000,
         );
+        registry.set_resolver(&name, &old_owner, &Some(resolver_id.to_string()), &now);
 
         resolver.set_record(&name, &old_owner, &old_address, &now);
+        resolver.set_text_record(
+            &name,
+            &old_owner,
+            &String::from_str(&env, "com.twitter"),
+            &String::from_str(&env, "@old-owner"),
+            &now,
+        );
         resolver.set_primary_name(&old_address, &old_owner, &name);
 
         registry.transfer(&name, &old_owner, &new_owner, &(now + 10));
+        assert_eq!(resolver.resolve(&name), None);
+        resolver.set_record(&name, &new_owner, &new_address, &(now + 10));
 
         assert_eq!(resolver.reverse(&old_address), None);
-        assert_eq!(resolver.reverse(&new_address), None);
+        assert_eq!(resolver.reverse(&new_address), Some(name.clone()));
+        assert!(resolver.resolve(&name).unwrap().text_records.is_empty());
     }
 
     #[test]
@@ -862,7 +960,7 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[test]
-    fn batch_set_applies_address_and_text_ops_atomically() {
+    fn test_batch_set_ordering() {
         let env = Env::default();
         env.mock_all_auths_allowing_non_root_auth();
         let contract_id = env.register(ResolverContract, ());
@@ -879,36 +977,41 @@ mod tests {
                 BatchOp::SetAddress(String::from_str(&env, "GBBB")),
                 BatchOp::SetText(
                     String::from_str(&env, "url"),
-                    String::from_str(&env, "https://alice.example"),
+                    String::from_str(&env, "https://first.example"),
                 ),
+                BatchOp::SetAddress(String::from_str(&env, "GCCC")),
                 BatchOp::SetText(
-                    String::from_str(&env, "com.twitter"),
-                    String::from_str(&env, "@alice"),
+                    String::from_str(&env, "url"),
+                    String::from_str(&env, "https://last.example"),
                 ),
             ],
         );
 
         let applied = client.batch_set(&name, &owner, &ops, &200);
-        assert_eq!(applied, 3);
+        assert_eq!(applied, 4);
 
         let record = client.resolve(&name).unwrap();
         assert_eq!(
             record.addresses.get(String::from_str(&env, "stellar")),
-            Some(String::from_str(&env, "GBBB"))
+            Some(String::from_str(&env, "GCCC"))
         );
-        assert_eq!(record.text_records.len(), 2);
-        assert_eq!(record.updated_at, 200);
-        // Reverse mapping updated
+        assert_eq!(record.text_records.len(), 1);
         assert_eq!(
-            client.reverse(&String::from_str(&env, "GBBB")),
+            record.text_records.get(String::from_str(&env, "url")),
+            Some(String::from_str(&env, "https://last.example"))
+        );
+        assert_eq!(record.updated_at, 200);
+        // Each repeated write takes effect in vector order.
+        assert_eq!(
+            client.reverse(&String::from_str(&env, "GCCC")),
             Some(name.clone())
         );
-        // Old reverse cleared
+        assert_eq!(client.reverse(&String::from_str(&env, "GBBB")), None);
         assert_eq!(client.reverse(&String::from_str(&env, "GAAA")), None);
     }
 
     #[test]
-    fn batch_set_rejects_oversized_payloads() {
+    fn test_batch_set_over_max_ops() {
         let env = Env::default();
         env.mock_all_auths_allowing_non_root_auth();
         let contract_id = env.register(ResolverContract, ());
@@ -918,9 +1021,9 @@ mod tests {
         let name = String::from_str(&env, "alice.xlm");
         client.set_record(&name, &owner, &String::from_str(&env, "GAAA"), &100);
 
-        // Build 17 ops (MAX_BATCH_OPS = 16)
+        // Build one more than the configured limit.
         let mut ops = Vec::new(&env);
-        for i in 0u32..17 {
+        for i in 0..=MAX_BATCH_OPS {
             ops.push_back(BatchOp::SetText(
                 String::from_str(&env, &format!("key-{i}")),
                 String::from_str(&env, "v"),
@@ -956,7 +1059,7 @@ mod tests {
     }
 
     #[test]
-    fn batch_set_partial_failure_skips_invalid_ops_and_applies_valid_ones() {
+    fn test_batch_set_partial_failure_count() {
         let env = Env::default();
         env.mock_all_auths_allowing_non_root_auth();
         let contract_id = env.register(ResolverContract, ());
@@ -966,26 +1069,30 @@ mod tests {
         let name = String::from_str(&env, "alice.xlm");
         client.set_record(&name, &owner, &String::from_str(&env, "GAAA"), &100);
 
-        // One valid text op + one with uppercase key (invalid, will be skipped)
+        // Valid operations surround the invalid text operation.
         let ops = Vec::from_array(
             &env,
             [
-                BatchOp::SetText(
-                    String::from_str(&env, "url"),
-                    String::from_str(&env, "https://alice.example"),
-                ),
+                BatchOp::SetAddress(String::from_str(&env, "GBBB")),
                 BatchOp::SetText(
                     String::from_str(&env, "BadKey"), // uppercase — invalid
                     String::from_str(&env, "value"),
+                ),
+                BatchOp::SetText(
+                    String::from_str(&env, "url"),
+                    String::from_str(&env, "https://alice.example"),
                 ),
             ],
         );
 
         let applied = client.batch_set(&name, &owner, &ops, &200);
-        // Only the valid op counts
-        assert_eq!(applied, 1);
+        assert_eq!(applied, 2, "only successful operations are counted");
 
         let record = client.resolve(&name).unwrap();
+        assert_eq!(
+            record.addresses.get(String::from_str(&env, "stellar")),
+            Some(String::from_str(&env, "GBBB"))
+        );
         assert_eq!(record.text_records.len(), 1);
         assert_eq!(
             record.text_records.get(String::from_str(&env, "url")),
@@ -996,6 +1103,156 @@ mod tests {
             record.text_records.get(String::from_str(&env, "badkey")),
             None
         );
+    }
+
+    #[test]
+    fn test_batch_set_invalid_key_skipped() {
+        let env = Env::default();
+        env.mock_all_auths_allowing_non_root_auth();
+        let contract_id = env.register(ResolverContract, ());
+        let client = ResolverContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "alice.xlm");
+        client.set_record(&name, &owner, &String::from_str(&env, "GAAA"), &100);
+
+        let ops = Vec::from_array(
+            &env,
+            [
+                BatchOp::SetText(
+                    String::from_str(&env, "url"),
+                    String::from_str(&env, "before"),
+                ),
+                BatchOp::SetText(
+                    String::from_str(&env, "BadKey"),
+                    String::from_str(&env, "skip"),
+                ),
+                BatchOp::SetText(
+                    String::from_str(&env, "email"),
+                    String::from_str(&env, "after"),
+                ),
+            ],
+        );
+
+        assert_eq!(client.batch_set(&name, &owner, &ops, &200), 2);
+        let record = client.resolve(&name).unwrap();
+        assert_eq!(record.text_records.len(), 2);
+        assert_eq!(
+            record.text_records.get(String::from_str(&env, "url")),
+            Some(String::from_str(&env, "before"))
+        );
+        assert_eq!(
+            record.text_records.get(String::from_str(&env, "email")),
+            Some(String::from_str(&env, "after"))
+        );
+        assert_eq!(
+            record.text_records.get(String::from_str(&env, "BadKey")),
+            None
+        );
+    }
+
+    #[test]
+    fn test_batch_set_at_text_limit() {
+        let env = Env::default();
+        env.mock_all_auths_allowing_non_root_auth();
+        let contract_id = env.register(ResolverContract, ());
+        let client = ResolverContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "alice.xlm");
+        client.set_record(&name, &owner, &String::from_str(&env, "GAAA"), &100);
+        for idx in 0..MAX_TEXT_RECORDS {
+            client.set_text_record(
+                &name,
+                &owner,
+                &String::from_str(&env, &format!("key-{idx}")),
+                &String::from_str(&env, "value"),
+                &(101 + idx as u64),
+            );
+        }
+
+        let ops = Vec::from_array(
+            &env,
+            [
+                BatchOp::SetText(
+                    String::from_str(&env, "new-key"),
+                    String::from_str(&env, "skipped"),
+                ),
+                BatchOp::SetText(
+                    String::from_str(&env, "key-0"),
+                    String::from_str(&env, "updated"),
+                ),
+            ],
+        );
+        assert_eq!(client.batch_set(&name, &owner, &ops, &200), 1);
+        let record = client.resolve(&name).unwrap();
+        assert_eq!(record.text_records.len(), MAX_TEXT_RECORDS as u32);
+        assert_eq!(
+            record.text_records.get(String::from_str(&env, "new-key")),
+            None
+        );
+        assert_eq!(
+            record.text_records.get(String::from_str(&env, "key-0")),
+            Some(String::from_str(&env, "updated"))
+        );
+    }
+
+    #[test]
+    fn test_batch_set_at_max_ops() {
+        let env = Env::default();
+        env.mock_all_auths_allowing_non_root_auth();
+        let contract_id = env.register(ResolverContract, ());
+        let client = ResolverContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "alice.xlm");
+        client.set_record(&name, &owner, &String::from_str(&env, "GAAA"), &100);
+
+        let mut ops = Vec::new(&env);
+        for idx in 0..MAX_BATCH_OPS {
+            ops.push_back(BatchOp::SetAddress(String::from_str(
+                &env,
+                &format!("G{idx}"),
+            )));
+        }
+        assert_eq!(
+            client.batch_set(&name, &owner, &ops, &200),
+            MAX_BATCH_OPS as u32
+        );
+        assert_eq!(
+            client.reverse(&String::from_str(&env, &format!("G{}", MAX_BATCH_OPS - 1))),
+            Some(name)
+        );
+    }
+
+    #[test]
+    fn test_batch_set_all_invalid() {
+        let env = Env::default();
+        env.mock_all_auths_allowing_non_root_auth();
+        let contract_id = env.register(ResolverContract, ());
+        let client = ResolverContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "alice.xlm");
+        client.set_record(&name, &owner, &String::from_str(&env, "GAAA"), &100);
+
+        let ops = Vec::from_array(
+            &env,
+            [
+                BatchOp::SetText(
+                    String::from_str(&env, "BadKey"),
+                    String::from_str(&env, "value"),
+                ),
+                BatchOp::SetText(
+                    String::from_str(&env, "also invalid!"),
+                    String::from_str(&env, "value"),
+                ),
+            ],
+        );
+        assert_eq!(client.batch_set(&name, &owner, &ops, &200), 0);
+        let record = client.resolve(&name).unwrap();
+        assert_eq!(
+            record.addresses.get(String::from_str(&env, "stellar")),
+            Some(String::from_str(&env, "GAAA"))
+        );
+        assert_eq!(record.text_records.len(), 0);
+        assert_eq!(record.updated_at, 100);
     }
 
     // -----------------------------------------------------------------------

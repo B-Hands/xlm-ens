@@ -23,6 +23,18 @@ pub struct ContractUpgraded {
 }
 
 #[contracttype]
+pub struct ContractPaused {
+    pub admin: Address,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+pub struct ContractUnpaused {
+    pub admin: Address,
+    pub timestamp: u64,
+}
+
+#[contracttype]
 pub struct LockApplied {
     pub name: String,
     pub locked_until: u64,
@@ -88,6 +100,7 @@ enum DataKey {
     DisputeAdmin,
     NftContract,
     ContractVersion,
+    Paused,
 }
 
 #[contracterror]
@@ -105,6 +118,7 @@ pub enum RegistryError {
     InvalidGracePeriod = 9,
     UpgradeFailed = 10,
     Locked = 11,
+    ContractPaused = 13,
 }
 
 #[contract]
@@ -122,6 +136,7 @@ pub trait Nft {
 #[contractclient(name = "ResolverClient")]
 pub trait Resolver {
     fn clear_reverse_record(env: Env, name: String, previous_owner: Address);
+    fn invalidate_record(env: Env, name: String, previous_owner: Address);
 }
 
 #[contractimpl]
@@ -150,6 +165,7 @@ impl RegistryContract {
     }
 
     pub fn set_nft_contract(env: Env, nft_contract: Address) -> Result<(), RegistryError> {
+        ensure_not_paused(&env)?;
         let admin: Address = env
             .storage()
             .instance()
@@ -163,6 +179,7 @@ impl RegistryContract {
     }
 
     pub fn set_dispute_admin(env: Env, dispute_admin: Address) -> Result<(), RegistryError> {
+        ensure_not_paused(&env)?;
         let admin: Address = env
             .storage()
             .instance()
@@ -175,6 +192,46 @@ impl RegistryContract {
         Ok(())
     }
 
+    /// Pause all registry state mutations during an incident response.
+    pub fn pause(env: Env) -> Result<(), RegistryError> {
+        let admin = get_admin(&env)?;
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Paused, &true);
+        env.events().publish(
+            (symbol_short!("contract"), symbol_short!("paused")),
+            ContractPaused {
+                admin,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+        Ok(())
+    }
+
+    /// Resume registry state mutations after the incident has been addressed.
+    pub fn unpause(env: Env) -> Result<(), RegistryError> {
+        let admin = get_admin(&env)?;
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Paused, &false);
+        env.events().publish(
+            (symbol_short!("contract"), symbol_short!("unpaused")),
+            ContractUnpaused {
+                admin,
+                timestamp: env.ledger().timestamp(),
+            },
+        );
+        Ok(())
+    }
+
+    /// Returns whether state-mutating registry operations are suspended.
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
+    /// Administrative recovery path; intentionally remains available while
+    /// normal registry mutations are paused.
     pub fn upgrade(
         env: Env,
         new_wasm_hash: BytesN<32>,
@@ -232,6 +289,7 @@ impl RegistryContract {
         expires_at: u64,
         grace_period_ends_at: u64,
     ) -> Result<(), RegistryError> {
+        ensure_not_paused(&env)?;
         owner.require_auth();
         validate_fqdn_soroban(&name).map_err(|_| RegistryError::Validation)?;
         ensure_name_unlocked(&env, &name, now_unix)?;
@@ -332,6 +390,7 @@ impl RegistryContract {
         new_owner: Address,
         now_unix: u64,
     ) -> Result<(), RegistryError> {
+        ensure_not_paused(&env)?;
         caller.require_auth();
         ensure_name_unlocked(&env, &name, now_unix)?;
         let mut entry = get_entry(&env, &name)?;
@@ -346,7 +405,7 @@ impl RegistryContract {
         if let Some(resolver_id) = entry.resolver.clone() {
             let resolver_address = Address::from_string(&resolver_id);
             let resolver_client = ResolverClient::new(&env, &resolver_address);
-            resolver_client.clear_reverse_record(&name, &old_owner);
+            resolver_client.invalidate_record(&name, &old_owner);
         }
 
         env.events().publish(
@@ -368,6 +427,7 @@ impl RegistryContract {
         resolver: Option<String>,
         now_unix: u64,
     ) -> Result<(), RegistryError> {
+        ensure_not_paused(&env)?;
         caller.require_auth();
         ensure_name_unlocked(&env, &name, now_unix)?;
         let mut entry = get_entry(&env, &name)?;
@@ -387,6 +447,7 @@ impl RegistryContract {
         target_address: Option<String>,
         now_unix: u64,
     ) -> Result<(), RegistryError> {
+        ensure_not_paused(&env)?;
         caller.require_auth();
         ensure_name_unlocked(&env, &name, now_unix)?;
         let mut entry = get_entry(&env, &name)?;
@@ -403,6 +464,7 @@ impl RegistryContract {
         metadata_uri: Option<String>,
         now_unix: u64,
     ) -> Result<(), RegistryError> {
+        ensure_not_paused(&env)?;
         caller.require_auth();
         ensure_name_unlocked(&env, &name, now_unix)?;
         validate_metadata(&metadata_uri)?;
@@ -419,6 +481,7 @@ impl RegistryContract {
         caller: Address,
         new_owner: Address,
     ) -> Result<(), RegistryError> {
+        ensure_not_paused(&env)?;
         // Only the NFT contract can call this function
         let nft_contract: Address = env
             .storage()
@@ -464,6 +527,7 @@ impl RegistryContract {
         grace_period_ends_at: u64,
         now_unix: u64,
     ) -> Result<(), RegistryError> {
+        ensure_not_paused(&env)?;
         caller.require_auth();
         ensure_name_unlocked(&env, &name, now_unix)?;
         let mut entry = get_entry(&env, &name)?;
@@ -538,6 +602,7 @@ impl RegistryContract {
         caller: Address,
         now_unix: u64,
     ) -> Result<(), RegistryError> {
+        ensure_not_paused(&env)?;
         caller.require_auth();
         ensure_name_unlocked(&env, &name, now_unix)?;
         let entry = get_entry(&env, &name)?;
@@ -572,6 +637,7 @@ impl RegistryContract {
         lock_reason: String,
         now_unix: u64,
     ) -> Result<(), RegistryError> {
+        ensure_not_paused(&env)?;
         let dispute_admin: Address = env
             .storage()
             .instance()
@@ -607,6 +673,7 @@ impl RegistryContract {
     }
 
     pub fn unlock_name(env: Env, name: String, caller: Address) -> Result<(), RegistryError> {
+        ensure_not_paused(&env)?;
         let dispute_admin: Address = env
             .storage()
             .instance()
@@ -666,6 +733,20 @@ fn get_entry(env: &Env, name: &String) -> Result<RegistryEntry, RegistryError> {
         .persistent()
         .get(&DataKey::Entry(name.clone()))
         .ok_or(RegistryError::NotFound)
+}
+
+fn get_admin(env: &Env) -> Result<Address, RegistryError> {
+    env.storage()
+        .instance()
+        .get(&DataKey::Admin)
+        .ok_or(RegistryError::Unauthorized)
+}
+
+fn ensure_not_paused(env: &Env) -> Result<(), RegistryError> {
+    if RegistryContract::is_paused(env.clone()) {
+        return Err(RegistryError::ContractPaused);
+    }
+    Ok(())
 }
 
 fn get_lock(env: &Env, name: &String) -> Option<NameLock> {

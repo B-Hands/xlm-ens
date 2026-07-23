@@ -4,10 +4,10 @@ use crate::errors::{ContractErrorCode, SdkError};
 use crate::network;
 use crate::types::{
     AddControllerRequest, AuctionCreateRequest, AuctionInfo, AuctionState, AuctionStatus,
-    BatchResolveError, BatchResult, BidRequest, BridgeRoute, BuildMessageRequest,
-    CreateSubdomainRequest, FeeBreakdown, NameRecord, NftRecord, PortfolioPage,
-    RegisterChainRequest, RegisterParentRequest, RegistrarMetrics, RegistrationQuote,
-    RegistrationReceipt, RegistrationRequest, RegistryEntry, RenewalReceipt, RenewalRequest,
+    AvailabilityResult, BidRequest, BridgeRoute, BuildMessageRequest, CreateSubdomainRequest,
+    FeeBreakdown, NameRecord, NftRecord, PortfolioPage, RegisterChainRequest,
+    RegisterParentRequest, RegistrarMetrics, RegistrationQuote, RegistrationReceipt,
+    RegistrationRequest, RegistrationStatus, RegistryEntry, RenewalReceipt, RenewalRequest,
     ResolutionRecord, ResolutionResult, ReverseResolution, SimulationResult, Subdomain,
     SubmissionStatus, TextRecord, TextRecordUpdate, TextRecordsUpdate, TransactionSubmission,
     TransferRequest, TransferSubdomainRequest, DEFAULT_FEE_CURRENCY,
@@ -689,6 +689,7 @@ impl XlmNsClient {
             address: format!("GDRA...RESOLVED_ADDR:{name}:{ledger}"),
             text_records: make_text_records(name),
             updated_at: MOCK_REFERENCE_TIMESTAMP,
+            expires_at: MOCK_REFERENCE_TIMESTAMP + SECONDS_PER_YEAR,
             is_wildcard: false,
         }
     }
@@ -904,6 +905,69 @@ impl XlmNsClient {
             grace_period_ends_at,
             quoted_at: now,
             contract_id: Some(registrar_id),
+        })
+    }
+
+    /// Return the registrar lifecycle status for a label.
+    pub async fn registration_status(&self, label: &str) -> Result<RegistrationStatus, SdkError> {
+        Self::require_label(label, "label")?;
+        let _registrar_id =
+            Self::require_contract_id(&self.registrar_contract_id, "registrar contract ID")?;
+
+        // The live registrar query is represented by the SDK's deterministic
+        // read model until ABI-backed queries are enabled. These fixtures keep
+        // lifecycle states observable to SDK consumers and tests.
+        Ok(match label.trim() {
+            "reserved" => RegistrationStatus::Reserved,
+            "grace" => RegistrationStatus::GracePeriod,
+            "taken" => RegistrationStatus::Active,
+            "claimable" => RegistrationStatus::Claimable,
+            _ => RegistrationStatus::Unavailable,
+        })
+    }
+
+    /// Preview whether `label` can be registered and, when it can, its cost.
+    ///
+    /// Active and grace-period names include their current owner and expiry so
+    /// registration UIs can explain why the label is not yet registerable.
+    pub async fn check_availability(
+        &self,
+        label: &str,
+        duration_years: u32,
+    ) -> Result<AvailabilityResult, SdkError> {
+        let status = self.registration_status(label).await?;
+        let available = matches!(
+            status,
+            RegistrationStatus::Unavailable | RegistrationStatus::Claimable
+        );
+
+        if available {
+            return Ok(AvailabilityResult {
+                available,
+                status,
+                quote: Some(self.quote_registration(label, duration_years).await?),
+                current_owner: None,
+                expires_at: None,
+            });
+        }
+
+        let (current_owner, expires_at) = match status {
+            RegistrationStatus::Active | RegistrationStatus::GracePeriod => {
+                let name = format!("{}.xlm", label.trim());
+                let record = self.get_registry_metadata(&name).await?;
+                (Some(record.owner), Some(record.expires_at))
+            }
+            RegistrationStatus::Unavailable
+            | RegistrationStatus::Claimable
+            | RegistrationStatus::Reserved => (None, None),
+        };
+
+        Ok(AvailabilityResult {
+            available,
+            status,
+            quote: None,
+            current_owner,
+            expires_at,
         })
     }
 
@@ -1334,6 +1398,7 @@ impl XlmNsClient {
                 reserve_price: 100,
                 highest_bid: 150,
                 highest_bidder: Some("GDRA...BIDDER".to_string()),
+                bid_count: 3,
                 ends_at: MOCK_REFERENCE_TIMESTAMP + 3600,
                 status: AuctionStatus::Active,
             }))
@@ -1344,6 +1409,7 @@ impl XlmNsClient {
                 reserve_price: 100,
                 highest_bid: 200,
                 highest_bidder: Some("GDRA...WINNER".to_string()),
+                bid_count: 4,
                 ends_at: MOCK_REFERENCE_TIMESTAMP - 3600,
                 status: AuctionStatus::Ended,
             }))
@@ -1450,6 +1516,31 @@ impl XlmNsClient {
             request.signer,
             Some(network_passphrase),
         ))
+    }
+
+    /// Simulate an auction bid without submitting it.
+    pub async fn simulate_bid_auction(
+        &self,
+        request: &BidRequest,
+    ) -> Result<SimulationResult, SdkError> {
+        if request.name.trim().is_empty() {
+            return Err(SdkError::InvalidRequest("name must not be empty".into()));
+        }
+        Self::require_label(&request.name, "name")?;
+        if request.amount == 0 {
+            return Err(SdkError::InvalidRequest(
+                "bid amount must be greater than zero".into(),
+            ));
+        }
+        let _auction_id =
+            Self::require_contract_id(&self.auction_contract_id, "auction contract ID")?;
+
+        Ok(SimulationResult {
+            fee_estimate: NETWORK_FEE,
+            auth_addresses: request.signer.clone().into_iter().collect(),
+            error: None,
+            success: true,
+        })
     }
 
     pub async fn load_reserved_manifest(

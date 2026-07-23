@@ -2,11 +2,14 @@
 mod tests {
     extern crate std;
 
-    use soroban_sdk::{testutils::Address as _, testutils::Events as _, Address, Env, String};
+    use soroban_sdk::{
+        testutils::{Address as _, Events as _, Ledger as _},
+        Address, Env, IntoVal, String,
+    };
 
     use crate::{
-        inject_stale_index_entry, NameState, RegistryContract, RegistryContractClient,
-        RegistryError,
+        inject_stale_index_entry, ContractPaused, ContractUnpaused, NameState, RegistryContract,
+        RegistryContractClient, RegistryError,
     };
 
     struct TimeHelper {
@@ -57,6 +60,137 @@ mod tests {
         let resolved = client.resolve(&name, &transfer_time);
         assert_eq!(resolved.owner, next_owner);
         assert_eq!(client.names_for_owner(&next_owner).len(), 1);
+    }
+
+    #[test]
+    fn pause_blocks_mutations_but_keeps_queries_available() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(100_000);
+        let contract_id = env.register(RegistryContract, ());
+        let client = RegistryContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let owner = Address::generate(&env);
+        let next_owner = Address::generate(&env);
+        let name = String::from_str(&env, "paused.xlm");
+        let time = TimeHelper::new();
+
+        client.initialize(&admin);
+        client.register(
+            &name,
+            &owner,
+            &None::<String>,
+            &None::<String>,
+            &time.now,
+            &time.future(1_000),
+            &time.future(2_000),
+        );
+
+        client.pause();
+        assert!(client.is_paused());
+        assert!(matches!(
+            client.try_register(
+                &String::from_str(&env, "blocked-registration.xlm"),
+                &owner,
+                &None::<String>,
+                &None::<String>,
+                &time.now,
+                &time.future(1_000),
+                &time.future(2_000),
+            ),
+            Err(Ok(RegistryError::ContractPaused))
+        ));
+        assert!(matches!(
+            client.try_transfer(&name, &owner, &next_owner, &time.future(10)),
+            Err(Ok(RegistryError::ContractPaused))
+        ));
+        assert!(matches!(
+            client.try_renew(
+                &name,
+                &owner,
+                &time.future(1_500),
+                &time.future(2_500),
+                &time.now
+            ),
+            Err(Ok(RegistryError::ContractPaused))
+        ));
+        assert!(matches!(
+            client.try_set_resolver(&name, &owner, &None::<String>, &time.now),
+            Err(Ok(RegistryError::ContractPaused))
+        ));
+        assert!(matches!(
+            client.try_set_target_address(&name, &owner, &None::<String>, &time.now),
+            Err(Ok(RegistryError::ContractPaused))
+        ));
+        assert!(matches!(
+            client.try_set_metadata(&name, &owner, &None::<String>, &time.now),
+            Err(Ok(RegistryError::ContractPaused))
+        ));
+        assert!(matches!(
+            client.try_burn(&name, &owner, &time.now),
+            Err(Ok(RegistryError::ContractPaused))
+        ));
+
+        assert_eq!(client.resolve(&name, &time.now).owner, owner);
+        assert_eq!(client.name_state(&name, &time.now), NameState::Active);
+        assert_eq!(client.names_for_owner(&owner).len(), 1);
+
+        client.unpause();
+        assert!(!client.is_paused());
+        client.transfer(&name, &owner, &next_owner, &time.future(10));
+        assert_eq!(client.resolve(&name, &time.future(10)).owner, next_owner);
+    }
+
+    #[test]
+    fn pause_and_unpause_emit_timestamped_events() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(123);
+        let contract_id = env.register(RegistryContract, ());
+        let client = RegistryContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        client.pause();
+        assert_eq!(
+            env.events().all(),
+            soroban_sdk::vec![
+                &env,
+                (
+                    contract_id.clone(),
+                    (
+                        soroban_sdk::symbol_short!("contract"),
+                        soroban_sdk::symbol_short!("paused"),
+                    )
+                        .into_val(&env),
+                    ContractPaused {
+                        admin: admin.clone(),
+                        timestamp: 123,
+                    }
+                    .into_val(&env),
+                ),
+            ]
+        );
+        client.unpause();
+        assert_eq!(
+            env.events().all(),
+            soroban_sdk::vec![
+                &env,
+                (
+                    contract_id,
+                    (
+                        soroban_sdk::symbol_short!("contract"),
+                        soroban_sdk::symbol_short!("unpaused"),
+                    )
+                        .into_val(&env),
+                    ContractUnpaused {
+                        admin,
+                        timestamp: 123,
+                    }
+                    .into_val(&env),
+                ),
+            ]
+        );
     }
 
     #[test]
