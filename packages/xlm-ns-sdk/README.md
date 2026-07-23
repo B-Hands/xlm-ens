@@ -26,6 +26,7 @@ Transport-level controls live on `ClientConfig`:
 | `retry.max_backoff` | `30s` | Cap on the exponential backoff delay. |
 | `retry.jitter` | `true` | Randomize each retry delay uniformly in `[0, backoff]`. |
 | `user_agent` | `xlm-ns-sdk/<crate-version>` | Sent as the HTTP `User-Agent` so operators can identify SDK traffic in upstream logs. |
+| `batch_chunk_size` | `50` | Names sent per `batch_resolve` invocation. Larger batches are split automatically. |
 
 Override anything with the chainable setters:
 
@@ -68,6 +69,66 @@ let receipt = client.register(RegistrationRequest {
 println!("registered {} for {} years", receipt.name, receipt.duration_years);
 # Ok(()) }
 ```
+
+## Batch resolution
+
+`batch_resolve` maps onto the resolver contract's `batch_resolve` entry point,
+so resolving `n` names costs one invocation per chunk instead of `n` separate
+round-trips.
+
+One bad name never fails the batch. Results come back in input order, one
+`BatchResult` per name, and a name that could not be resolved carries a
+`BatchResolveError` while its neighbours still return addresses:
+
+```rust
+use xlm_ns_sdk::XlmNsClient;
+
+# async fn run() -> Result<(), xlm_ns_sdk::SdkError> {
+let client = XlmNsClient::builder("https://soroban-rpc.example")
+    .registry("CDAD...REGISTRY")
+    .resolver("CDAD...RESOLVER")
+    .build();
+
+let results = client.batch_resolve(vec![
+    "alice.xlm".into(),
+    "bob.xlm".into(),
+    "expired.xlm".into(),
+]).await?;
+
+for result in &results {
+    match result.as_result() {
+        Ok(address) => println!("{} -> {address} (ttl {:?})", result.name, result.ttl_seconds),
+        Err(err) => eprintln!("{} failed: {err}", result.name),
+    }
+}
+# Ok(()) }
+```
+
+`Err` from `batch_resolve` itself is reserved for problems with the request —
+an unconfigured or malformed resolver contract ID, for instance.
+
+### Chunking and retries
+
+Soroban bounds the resources a single invocation may consume, so batches larger
+than `ClientConfig::batch_chunk_size` (default 50) are split transparently.
+Each chunk is retried independently under the client's `RetryConfig`; a chunk
+that still fails after its retries marks only its own names with
+`BatchResolveError::Rpc`, leaving the other chunks' results intact.
+
+Raise the chunk size once you have measured that your names fit:
+
+```rust
+use xlm_ns_sdk::{ClientConfig, XlmNsClient};
+
+let client = XlmNsClient::builder("https://soroban-rpc.example")
+    .registry("CDAD...REGISTRY")
+    .resolver("CDAD...RESOLVER")
+    .config(ClientConfig::default().with_batch_chunk_size(100))
+    .build();
+```
+
+Per-name failure variants: `InvalidName` (rejected client-side, never sent),
+`NotFound`, `Expired`, `NoAddress`, and `Rpc`.
 
 ## Blocking usage
 

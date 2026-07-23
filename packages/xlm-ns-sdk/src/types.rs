@@ -266,6 +266,117 @@ pub struct PortfolioPage {
     pub total: usize,
 }
 
+/// Why a single name inside a batch failed to resolve.
+///
+/// A batch never fails as a whole because of one bad name — the failure is
+/// attached to that name's [`BatchResult`] and every other name still returns
+/// its resolution. See [`XlmNsClient::batch_resolve`].
+///
+/// [`XlmNsClient::batch_resolve`]: crate::client::XlmNsClient::batch_resolve
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BatchResolveError {
+    /// The name failed client-side validation and was never sent to the
+    /// contract (empty, whitespace-only, or otherwise malformed).
+    InvalidName { reason: String },
+    /// The resolver returned no record for this name.
+    NotFound,
+    /// A record exists but the registration lapsed past its grace period, so
+    /// the resolver no longer treats it as active.
+    Expired { expired_at: u64 },
+    /// A record exists but carries no address for the default chain.
+    NoAddress,
+    /// The chunk containing this name could not be queried, even after the
+    /// configured retries. Other chunks are unaffected.
+    Rpc { reason: String },
+}
+
+impl fmt::Display for BatchResolveError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidName { reason } => write!(f, "invalid name: {reason}"),
+            Self::NotFound => f.write_str("no resolver record found"),
+            Self::Expired { expired_at } => {
+                write!(f, "registration expired at unix timestamp {expired_at}")
+            }
+            Self::NoAddress => f.write_str("record has no address for the default chain"),
+            Self::Rpc { reason } => write!(f, "rpc failure: {reason}"),
+        }
+    }
+}
+
+impl std::error::Error for BatchResolveError {}
+
+/// The outcome of resolving one name within a batch.
+///
+/// Exactly one of [`address`](Self::address) and [`error`](Self::error) is
+/// populated: a successful entry carries the resolved address and TTL, a
+/// failed entry carries the per-name reason. Use [`is_ok`](Self::is_ok) to
+/// branch without matching on both fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BatchResult {
+    /// The name as supplied by the caller, so results can be correlated with
+    /// the input even though ordering is already preserved.
+    pub name: String,
+    /// The resolved address, or `None` when [`error`](Self::error) is set.
+    pub address: Option<String>,
+    /// Record time-to-live in seconds, for callers that cache resolutions.
+    pub ttl_seconds: Option<u64>,
+    /// Unix timestamp at which the registration expires.
+    pub expires_at: Option<u64>,
+    /// Why this name failed, or `None` when resolution succeeded.
+    pub error: Option<BatchResolveError>,
+}
+
+impl BatchResult {
+    /// Build a successful entry.
+    pub fn success(
+        name: impl Into<String>,
+        address: impl Into<String>,
+        ttl_seconds: Option<u64>,
+        expires_at: Option<u64>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            address: Some(address.into()),
+            ttl_seconds,
+            expires_at,
+            error: None,
+        }
+    }
+
+    /// Build a failed entry.
+    pub fn failure(name: impl Into<String>, error: BatchResolveError) -> Self {
+        Self {
+            name: name.into(),
+            address: None,
+            ttl_seconds: None,
+            expires_at: None,
+            error: Some(error),
+        }
+    }
+
+    /// `true` when this name resolved successfully.
+    pub fn is_ok(&self) -> bool {
+        self.error.is_none()
+    }
+
+    /// `true` when this name failed to resolve.
+    pub fn is_err(&self) -> bool {
+        self.error.is_some()
+    }
+
+    /// The resolved address, or the per-name error.
+    pub fn as_result(&self) -> Result<&str, &BatchResolveError> {
+        match (&self.address, &self.error) {
+            (Some(address), None) => Ok(address.as_str()),
+            (_, Some(error)) => Err(error),
+            // Unreachable via the constructors above; treat a record with
+            // neither an address nor an error as a missing address.
+            (None, None) => Err(&BatchResolveError::NoAddress),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReverseResolution {
     pub address: String,

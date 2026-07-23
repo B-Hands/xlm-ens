@@ -56,7 +56,20 @@ _(no unreleased changes)_
 
 ### SDK (`xlm-ns-sdk`)
 
-_(no unreleased changes)_
+#### Added
+
+- `XlmNsClient::batch_resolve(names) -> Result<Vec<BatchResult>, SdkError>`
+  (and its blocking counterpart) mapping onto the resolver contract's
+  `batch_resolve` entry point, so resolving _n_ names costs one invocation per
+  chunk instead of _n_ round-trips. Results preserve input order.
+- Partial failures are reported per name via `BatchResolveError`
+  (`InvalidName`, `NotFound`, `Expired`, `NoAddress`, `Rpc`); one bad name never
+  fails the batch, and a name is only failed for the whole call when the request
+  itself is invalid (e.g. an unconfigured resolver contract ID).
+- `ClientConfig::batch_chunk_size` (default 50, via `with_batch_chunk_size`)
+  splits batches that would exceed Soroban's per-invocation resource limits.
+  Each chunk is retried independently under the existing `RetryConfig`.
+- `batch_resolve` example (`examples/batch_resolve.rs`) and README section.
 
 ### CLI (`xlm-ns-cli`)
 
