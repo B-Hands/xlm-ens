@@ -715,9 +715,13 @@ impl ResolverContract {
             }
         }
 
-        record.updated_at = now_unix;
-        put_record(&env, &name, &record); // TTL extended inside put_record
-        extend_instance_ttl(&env); // #146
+        // A wholly invalid batch is a true no-op: do not change timestamps or
+        // refresh storage state when none of its operations were applied.
+        if applied > 0 {
+            record.updated_at = now_unix;
+            put_record(&env, &name, &record); // TTL extended inside put_record
+            extend_instance_ttl(&env); // #146
+        }
 
         Ok(applied)
     }
