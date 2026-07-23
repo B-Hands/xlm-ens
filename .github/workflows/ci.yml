@@ -9,6 +9,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   changelog:
     name: Changelog Check
@@ -94,6 +98,14 @@ jobs:
     needs: clippy
     steps:
       - uses: actions/checkout@v4
+      - name: Download latest main-branch WASM size baseline
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: ci.yml
+          branch: main
+          name: contract-size-history
+          path: .ci/main-size-baseline
+          if_no_artifact_found: warn
       - name: Install Rust
         run: rustup update stable && rustup target add wasm32v1-none
       - name: Rust cache
@@ -124,12 +136,23 @@ jobs:
             echo "OK: $wasm ($(wc -c < "$wasm") bytes)"
           done
       - name: Check contract WASM size budget
+        id: wasm_size_budget
+        continue-on-error: true
         run: ./scripts/check-contract-size.sh
+      - name: Record WASM size trend and enforce early-warning threshold
+        id: wasm_size_trend
+        continue-on-error: true
+        run: >
+          ./scripts/track-contract-size.sh
+          .github/contract-size-budget.json
+          target/wasm32v1-none/release
+          .ci/main-size-baseline/contract-sizes.json
       - name: Collect artifacts
         run: |
           mkdir -p artifacts/wasm artifacts/specs
           cp target/wasm32v1-none/release/xlm_ns_*.wasm artifacts/wasm/
-            cp artifacts/contract-size-report.md artifacts/ 2>/dev/null || true
+          cp artifacts/contract-size-report.md artifacts/ 2>/dev/null || true
+          cp artifacts/contract-size-trend.md artifacts/ 2>/dev/null || true
 
           # Generate contract specs for each WASM
           for wasm in artifacts/wasm/*.wasm; do
@@ -146,3 +169,33 @@ jobs:
           # Retain artifacts for 90 days so deployment and verification workflows
           # can consume reproducible WASM outputs long after the build completes.
           retention-days: 90
+      - name: Upload contract size history
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-size-history
+          path: artifacts/contract-sizes.json
+          retention-days: 90
+      - name: Comment WASM size trend on pull request
+        if: ${{ always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- contract-size-trend -->';
+            const body = fs.readFileSync('artifacts/contract-size-trend.md', 'utf8');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(comment =>
+              comment.user.type === 'Bot' && comment.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+      - name: Fail for a WASM budget or early-warning threshold breach
+        if: steps.wasm_size_budget.outcome == 'failure' || steps.wasm_size_trend.outcome == 'failure'
+        run: exit 1
