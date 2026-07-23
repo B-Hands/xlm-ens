@@ -30,8 +30,8 @@ mod tests {
     use crate::errors::SdkError;
     use crate::network;
     use crate::types::{
-        RegistrationRequest, RenewalRequest, SubmissionStatus, TextRecordUpdate, TextRecordsUpdate,
-        TransferRequest,
+        BidRequest, RegistrationRequest, RenewalRequest, SubmissionStatus, TextRecordUpdate,
+        TextRecordsUpdate, TransferRequest,
     };
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -273,6 +273,22 @@ mod tests {
         let state = client().get_auction_state("active.xlm").await.unwrap();
         assert_eq!(state.highest_bid, 150);
         assert!(state.end_time > 0);
+    }
+
+    #[tokio::test]
+    async fn simulate_auction_bid_returns_preflight_details() {
+        let simulation = client()
+            .simulate_bid_auction(&BidRequest {
+                name: "active.xlm".into(),
+                amount: 200,
+                signer: Some("auction-bidder".into()),
+            })
+            .await
+            .unwrap();
+
+        assert!(simulation.success);
+        assert!(simulation.fee_estimate > 0);
+        assert_eq!(simulation.auth_addresses, vec!["auction-bidder"]);
     }
 
     #[tokio::test]

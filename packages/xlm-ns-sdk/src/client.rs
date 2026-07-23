@@ -1063,6 +1063,7 @@ impl XlmNsClient {
                 reserve_price: 100,
                 highest_bid: 150,
                 highest_bidder: Some("GDRA...BIDDER".to_string()),
+                bid_count: 3,
                 ends_at: MOCK_REFERENCE_TIMESTAMP + 3600,
                 status: AuctionStatus::Active,
             }))
@@ -1073,6 +1074,7 @@ impl XlmNsClient {
                 reserve_price: 100,
                 highest_bid: 200,
                 highest_bidder: Some("GDRA...WINNER".to_string()),
+                bid_count: 4,
                 ends_at: MOCK_REFERENCE_TIMESTAMP - 3600,
                 status: AuctionStatus::Ended,
             }))
@@ -1179,6 +1181,31 @@ impl XlmNsClient {
             request.signer,
             Some(network_passphrase),
         ))
+    }
+
+    /// Simulate an auction bid without submitting it.
+    pub async fn simulate_bid_auction(
+        &self,
+        request: &BidRequest,
+    ) -> Result<SimulationResult, SdkError> {
+        if request.name.trim().is_empty() {
+            return Err(SdkError::InvalidRequest("name must not be empty".into()));
+        }
+        Self::require_label(&request.name, "name")?;
+        if request.amount == 0 {
+            return Err(SdkError::InvalidRequest(
+                "bid amount must be greater than zero".into(),
+            ));
+        }
+        let _auction_id =
+            Self::require_contract_id(&self.auction_contract_id, "auction contract ID")?;
+
+        Ok(SimulationResult {
+            fee_estimate: NETWORK_FEE,
+            auth_addresses: request.signer.clone().into_iter().collect(),
+            error: None,
+            success: true,
+        })
     }
 
     pub async fn load_reserved_manifest(

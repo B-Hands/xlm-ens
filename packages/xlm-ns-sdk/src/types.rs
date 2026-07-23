@@ -429,6 +429,8 @@ pub struct AuctionInfo {
     pub reserve_price: u64,
     pub highest_bid: u64,
     pub highest_bidder: Option<String>,
+    /// Number of bids accepted by the auction so far.
+    pub bid_count: u32,
     pub ends_at: u64,
     pub status: AuctionStatus,
 }
