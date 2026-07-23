@@ -1,0 +1,109 @@
+name: Verify deployment
+
+# Runs scripts/verify-deployment.sh against a live set of deployed contracts.
+# Not tied to the (stub) deploy scripts yet, so it's dispatched manually or
+# called from a future deploy workflow via workflow_call — see issue #602.
+
+on:
+  workflow_dispatch:
+    inputs:
+      network:
+        description: "Target network"
+        required: true
+        type: choice
+        options: [testnet, mainnet]
+        default: testnet
+      registry_id:
+        required: true
+        type: string
+      registrar_id:
+        required: true
+        type: string
+      resolver_id:
+        required: true
+        type: string
+      nft_id:
+        required: true
+        type: string
+      auction_id:
+        required: true
+        type: string
+      subdomain_id:
+        required: true
+        type: string
+      bridge_id:
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      network:
+        required: true
+        type: string
+      registry_id:
+        required: true
+        type: string
+      registrar_id:
+        required: true
+        type: string
+      resolver_id:
+        required: true
+        type: string
+      nft_id:
+        required: true
+        type: string
+      auction_id:
+        required: true
+        type: string
+      subdomain_id:
+        required: true
+        type: string
+      bridge_id:
+        required: true
+        type: string
+
+jobs:
+  verify:
+    name: Verify (${{ inputs.network }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq pkg-config libssl-dev libdbus-1-dev libudev-dev
+
+      - name: Install Stellar CLI
+        run: cargo install --locked stellar-cli
+
+      - name: Configure verification identity
+        # Testnet: an ephemeral key funded via friendbot is fine. Mainnet
+        # verification only runs read-only checks unless someone explicitly
+        # forces the mutating path, so no funded mainnet key is required here.
+        run: |
+          if [ "${{ inputs.network }}" = "testnet" ]; then
+            stellar keys generate verify-ci --network testnet --fund
+          else
+            stellar keys generate verify-ci --no-fund
+          fi
+
+      - name: Run verification
+        run: |
+          scripts/verify-deployment.sh \
+            --network "${{ inputs.network }}" \
+            --registry "${{ inputs.registry_id }}" \
+            --registrar "${{ inputs.registrar_id }}" \
+            --resolver "${{ inputs.resolver_id }}" \
+            --nft "${{ inputs.nft_id }}" \
+            --auction "${{ inputs.auction_id }}" \
+            --subdomain "${{ inputs.subdomain_id }}" \
+            --bridge "${{ inputs.bridge_id }}" \
+            --source verify-ci \
+            --report-json artifacts/verify-deployment-report.json
+
+      - name: Upload verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-deployment-report-${{ inputs.network }}-${{ github.run_id }}
+          path: artifacts/verify-deployment-report.json
+          retention-days: 90
